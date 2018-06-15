@@ -6,8 +6,8 @@ CBMV: A Coalesced Bidirectional Matching Volume for Disparity Estimation code re
   author={Batsos, Konstantinos and Cai, Changjiang and Mordohai, Philipos},
   booktitle={IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
   year={2018}
-}```
-
+}
+```
 The code includes the cost-optimization and post-processing of MC-CNN [Stereo Matching by Training a Convolutional Neural Network to Compare Image Patches](https://arxiv.org/abs/1510.05970) as implemented by Jure Zbontar, and modified to interface with python. 
 
 # Links
@@ -38,8 +38,8 @@ Much of CBMV code is written as C++ libraries and interface with python via boos
 
 After compiling the C++ libraries, downloading the required python packages and precomputed model, CBMV can be executed using the following command:
 
-```python main.py  --l ./datasets/ArtL/im0.png --r ./datasets/ArtL/im1.png --w 694 --h 554 --d 128 --model /media/kbatsos/Data1/PKLS/modelslr/modelall_4m.rf --prob_save_path ./```
-
+```python main.py  --l ./datasets/ArtL/im0.png --r ./datasets/ArtL/im1.png --w 694 --h 554 --d 128 --model /media/kbatsos/Data1/PKLS/modelslr/modelall_4m.rf --prob_save_path ./
+```
  For a complete list of arguments please see tha main.py file. 
 
 
@@ -47,8 +47,8 @@ After compiling the C++ libraries, downloading the required python packages and 
 
  The above link includes the data we used to trained CBMV. To train CBMV you can use the following command:
 
-```python main.py --train --data_path "./datasets/" --train_add ./mb/additional.txt --train_set ./mb/trainall.txt --model /media/kbatsos/Data1/PKLS/modelslr/model.rf```
-
+```python main.py --train --data_path "./datasets/" --train_add ./mb/additional.txt --train_set ./mb/trainall.txt --model /media/kbatsos/Data1/PKLS/modelslr/model.rf
+```
 The txt files specify the training sets used during the training process. 
 
 
