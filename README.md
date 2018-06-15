@@ -38,7 +38,7 @@ Much of CBMV code is written as C++ libraries and interface with python via boos
 
 After compiling the C++ libraries, downloading the required python packages and precomputed model, CBMV can be executed using the following command:
 
- `python main.py  --l ./datasets/ArtL/im0.png --r ./datasets/ArtL/im1.png --w 694 --h 554 --d 128 --model /media/kbatsos/Data1/PKLS/modelslr/modelall_4m.rf --prob_save_path ./  `
+ `python main.py  --l ./datasets/ArtL/im0.png --r ./datasets/ArtL/im1.png --w 694 --h 554 --d 128 --model /media/kbatsos/Data1/PKLS/modelslr/modelall_4m.rf --prob_save_path ./`
 
  For a complete list of arguments please see tha main.py file. 
 
