@@ -1,0 +1,26 @@
+
+**** Build of configuration Debug for project integralmatchers ****
+
+make all 
+Building file: ../integralmatchers.cpp
+Invoking: GCC C++ Compiler
+g++ -I/usr/include/python2.7 -I/usr/include -O3 -g3 -Wall -c -fmessage-length=0 -ftree-vectorize -std=c++11 -fPIC -MMD -MP -MF"integralmatchers.d" -MT"integralmatchers.d" -o "integralmatchers.o" "../integralmatchers.cpp"
+In file included from /usr/include/python2.7/numpy/ndarraytypes.h:1777:0,
+                 from /usr/include/python2.7/numpy/ndarrayobject.h:18,
+                 from ../integralmatchers.cpp:5:
+/usr/include/python2.7/numpy/npy_1_7_deprecated_api.h:15:2: warning: #warning "Using deprecated NumPy API, disable it by " "#defining NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION" [-Wcpp]
+ #warning "Using deprecated NumPy API, disable it by " \
+  ^
+../integralmatchers.cpp: In function ‘PyObject* nccNister(PyObject*, PyObject*, int, int)’:
+../integralmatchers.cpp:38:9: warning: unused variable ‘end’ [-Wunused-variable]
+     int end;
+         ^
+Finished building: ../integralmatchers.cpp
+ 
+Building target: libintegralmatchers.so
+Invoking: GCC C++ Linker
+g++ -L/usr/lib -shared -o "libintegralmatchers.so"  ./integralmatchers.o   -lboost_python -lpython2.7
+Finished building target: libintegralmatchers.so
+ 
+
+**** Build Finished ****

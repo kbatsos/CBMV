@@ -1,0 +1,2320 @@
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+#include <iostream>
+#include <stdlib.h>
+#include <boost/python.hpp>
+#include "boost/python/extract.hpp"
+#include "boost/python/numeric.hpp"
+#include <numpy/ndarrayobject.h>
+#include <algorithm>
+#include <vector>
+#include <stdint.h>
+#include <assert.h>
+#include <immintrin.h>
+#include <omp.h>
+#include <sstream>
+
+
+using namespace std;
+using namespace boost::python;
+typedef uint8_t uint8;
+typedef int16_t int16;
+typedef unsigned long long int uint64;
+
+double NCCSIGMA = 0.02;
+//#define NCCSIGMA 2*pow(0.1,2)
+#define CENSUSSIGMA 2*pow(8.0,2)
+#define SADSIGMA 2*pow(100.0,2)
+//#define SADSIGMA 2*pow(8.0,2)
+#define Invalid_R_PKRN 0
+#define Invalid_R_AML 0
+
+PyObject* extract_testing_features(PyObject* cost_census, PyObject* cost_ncc, PyObject* cost_sad ){
+    PyArrayObject* censA = reinterpret_cast<PyArrayObject*>(cost_census);
+    PyArrayObject* nccA = reinterpret_cast<PyArrayObject*>(cost_ncc);
+    PyArrayObject* sadA = reinterpret_cast<PyArrayObject*>(cost_sad);
+
+    double * censp = reinterpret_cast<double*>(PyArray_DATA(censA));
+    double * nccp = reinterpret_cast<double*>(PyArray_DATA(nccA));
+    double * sadp = reinterpret_cast<double*>(PyArray_DATA(sadA));
+
+    npy_intp *shapecens = PyArray_DIMS(censA);
+    npy_intp *shapencc = PyArray_DIMS(nccA);
+    npy_intp *shapesad = PyArray_DIMS(sadA);
+
+    npy_intp *featshape = new npy_intp[2];
+    featshape[0] = shapecens[0]*shapecens[1]; featshape[1] = 12;
+
+	PyObject* features = PyArray_SimpleNew(2, featshape, NPY_FLOAT64);
+
+	double* features_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(features)));
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for (unsigned long int i=0; i <shapecens[0]; i++ ){
+			const unsigned long int pos = i* shapecens[1];
+			const int posc = i*shapencc[0];
+			double min_ncc = RAND_MAX, min_cens = RAND_MAX, min_sad = RAND_MAX,censdenom=0,nccdenom=0,saddenom=0,num;
+
+			for(int k=0; k< shapecens[1]; k++){
+					if(censp[pos+k] < min_cens){
+						min_cens = censp[pos+k];
+					}
+					if(nccp[pos+k] < min_ncc){
+						min_ncc = nccp[pos+k];
+					}
+					if(sadp[pos+k] < min_sad){
+						min_sad = sadp[pos+k];
+					}
+
+			}
+
+
+			for(int k=0; k<shapecens[1]; k++){
+					num = censp[pos+k]-min_cens;
+					censdenom += exp( -( num*num )/CENSUSSIGMA );
+					num =nccp[pos+k]-min_ncc;
+					nccdenom += exp( -( num*num )/NCCSIGMA );
+					num = sadp[pos+k]-min_sad;
+					saddenom += exp( -( num*num )/SADSIGMA );
+			}
+
+
+			for(int j=0; j< shapecens[1]; j++){
+				//Census cost
+				const long int s_i = i*shapecens[1]*12 + j*12;
+				features_data[ s_i  ] = censp[pos+j];
+				//Ncc cost
+				features_data[s_i +1] = nccp[pos+j];
+				//Sad cost
+				features_data[s_i +2] = sadp[pos+j];
+
+				//PKRN CENSUS
+				features_data[s_i +3] = ( min_cens +.01 ) / (censp[pos+j]+.01);
+				//assert(  ( min_cens +.01 ) / (censp[pos+j]+.01) > 0);
+				//PKRN NCC
+				features_data[s_i +4] = ( min_ncc +1.01 ) / (nccp[pos+j]+1.01);
+				//assert(  ( min_ncc +1.01 ) / (nccp[pos+j]+1.01) > 0);
+				//PKRN SAD
+				features_data[s_i +5] = ( min_sad +.01 ) / (sadp[pos+j]+.01);
+				//assert(  ( min_sad +1.01 ) / (sadp[pos+j]+1.01) > 0);
+
+				//MMN CENSUS
+				features_data[s_i+6] = censp[pos+j] - min_cens;
+				//MMN NCC
+				features_data[s_i+7] = nccp[pos+j] - min_ncc;
+				//MMN SAD
+				features_data[s_i+8] = sadp[pos+j] - min_sad;
+
+				//AML CENSUS
+				features_data[s_i+9] = exp( -((features_data[s_i+6]*features_data[s_i+6]) /CENSUSSIGMA )) /censdenom ;
+				//AML NCC
+				features_data[s_i+10] = exp( -((features_data[s_i+7]*features_data[s_i+7]) /NCCSIGMA )) /nccdenom ;
+				//AML SAD
+				features_data[s_i+11] = exp( -((features_data[s_i+8]*features_data[s_i+8]) /SADSIGMA )) /saddenom ;
+
+
+			}
+
+		}
+
+	}
+
+	return features;
+}
+
+
+PyObject* extract_testing_features4(PyObject* cost_census, PyObject* cost_ncc,PyObject* cost_sob, PyObject* cost_sad ){
+    PyArrayObject* censA = reinterpret_cast<PyArrayObject*>(cost_census);
+    PyArrayObject* nccA = reinterpret_cast<PyArrayObject*>(cost_ncc);
+    PyArrayObject* sobA = reinterpret_cast<PyArrayObject*>(cost_sob);
+    PyArrayObject* sadA = reinterpret_cast<PyArrayObject*>(cost_sad);
+
+    double * censp = reinterpret_cast<double*>(PyArray_DATA(censA));
+    double * nccp = reinterpret_cast<double*>(PyArray_DATA(nccA));
+    double * sobp = reinterpret_cast<double*>(PyArray_DATA(sobA));
+    double * sadp = reinterpret_cast<double*>(PyArray_DATA(sadA));
+
+    npy_intp *shapecens = PyArray_DIMS(censA);
+    npy_intp *shapencc = PyArray_DIMS(nccA);
+    npy_intp *shapesob = PyArray_DIMS(sobA);
+    npy_intp *shapesad = PyArray_DIMS(sadA);
+
+    npy_intp *featshape = new npy_intp[2];
+    featshape[0] = shapecens[0]*shapecens[1]; featshape[1] = 4*4;
+
+	PyObject* features = PyArray_SimpleNew(2, featshape, NPY_FLOAT64);
+
+	double* features_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(features)));
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for (unsigned long int i=0; i <shapecens[0]; i++ ){
+			const unsigned long int pos = i* shapecens[1];
+			const int posc = i*shapencc[0];
+			double min_ncc = RAND_MAX, min_cens = RAND_MAX, min_sob = RAND_MAX, min_sad = RAND_MAX,censdenom=0,nccdenom=0,sobdenom=0,saddenom=0,num;
+
+			for(int k=0; k< shapecens[1]; k++){
+					if(censp[pos+k] < min_cens){
+						min_cens = censp[pos+k];
+					}
+					if(nccp[pos+k] < min_ncc){
+						min_ncc = nccp[pos+k];
+					}
+					if(sobp[pos+k] < min_sob){
+						min_sob = sobp[pos+k];
+					}
+					if(sadp[pos+k] < min_sad){
+						min_sad = sadp[pos+k];
+					}
+
+			}
+
+
+			for(int k=0; k<shapecens[1]; k++){
+					num = censp[pos+k]-min_cens;
+					censdenom += exp( -( num*num )/CENSUSSIGMA );
+					num =nccp[pos+k]-min_ncc;
+					nccdenom += exp( -( num*num )/NCCSIGMA );
+					num = sobp[pos+k]-min_sob;
+					sobdenom += exp( -( num*num )/SADSIGMA );
+					num = sadp[pos+k]-min_sad;
+					saddenom += exp( -( num*num )/SADSIGMA );
+			}
+
+
+			for(int j=0; j< shapecens[1]; j++){
+				//Census cost
+				const long int s_i = i*shapecens[1]*featshape[1] + j*featshape[1];
+				features_data[ s_i  ] = censp[pos+j];
+				//Ncc cost
+				features_data[s_i +1] = nccp[pos+j];
+				//Sad cost
+				features_data[s_i +2] = sobp[pos+j];
+				//Sad cost
+				features_data[s_i +3] = sadp[pos+j];
+
+				//PKRN CENSUS
+				features_data[s_i +4] = ( min_cens +.01 ) / (censp[pos+j]+.01);
+				//assert(  ( min_cens +.01 ) / (censp[pos+j]+.01) > 0);
+				//PKRN NCC
+				features_data[s_i +5] = ( min_ncc +1.01 ) / (nccp[pos+j]+1.01);
+				//assert(  ( min_ncc +1.01 ) / (nccp[pos+j]+1.01) > 0);
+				//PKRN SAD
+				features_data[s_i +6] = ( min_sob +.01 ) / (sobp[pos+j]+.01);
+				//PKRN SAD
+				features_data[s_i +7] = ( min_sad +.01 ) / (sadp[pos+j]+.01);
+				//assert(  ( min_sad +1.01 ) / (sadp[pos+j]+1.01) > 0);
+
+				//MMN CENSUS
+				features_data[s_i+8] = censp[pos+j] - min_cens;
+				//MMN NCC
+				features_data[s_i+9] = nccp[pos+j] - min_ncc;
+				//MMN SAD
+				features_data[s_i+10] = sobp[pos+j] - min_sob;
+				//MMN SAD
+				features_data[s_i+11] = sadp[pos+j] - min_sad;
+
+				//AML CENSUS
+				features_data[s_i+12] = exp( -((features_data[s_i+8]*features_data[s_i+8]) /CENSUSSIGMA )) /censdenom ;
+				//AML NCC
+				features_data[s_i+13] = exp( -((features_data[s_i+9]*features_data[s_i+9]) /NCCSIGMA )) /nccdenom ;
+				//AML SAD
+				features_data[s_i+14] = exp( -((features_data[s_i+10]*features_data[s_i+10]) /SADSIGMA )) /sobdenom ;
+				//AML SAD
+				features_data[s_i+15] = exp( -((features_data[s_i+11]*features_data[s_i+11]) /SADSIGMA )) /saddenom ;
+
+
+			}
+
+		}
+
+	}
+
+	return features;
+}
+
+
+PyObject* extract_features(PyObject* cost_census, PyObject* cost_ncc, PyObject* cost_sad , PyObject *gt, PyObject *row_indices ){
+
+	srand (time(NULL));
+
+    PyArrayObject* censA = reinterpret_cast<PyArrayObject*>(cost_census);
+    PyArrayObject* nccA = reinterpret_cast<PyArrayObject*>(cost_ncc);
+    PyArrayObject* sadA = reinterpret_cast<PyArrayObject*>(cost_sad);
+    PyArrayObject* gtA = reinterpret_cast<PyArrayObject*>(gt);
+    PyArrayObject* riA = reinterpret_cast<PyArrayObject*>(row_indices);
+
+    double * censp = reinterpret_cast<double*>(PyArray_DATA(censA));
+    double * nccp = reinterpret_cast<double*>(PyArray_DATA(nccA));
+    double * sadp = reinterpret_cast<double*>(PyArray_DATA(sadA));
+    int * gtp = reinterpret_cast<int*>(PyArray_DATA(gtA));
+    int * rip = reinterpret_cast<int*>(PyArray_DATA(riA));
+
+
+
+    npy_intp *samples = PyArray_DIMS(riA);
+    npy_intp *shape = PyArray_DIMS(gtA);
+    npy_intp *shapecens = PyArray_DIMS(censA);
+    npy_intp *shapencc = PyArray_DIMS(nccA);
+    npy_intp *shapesad = PyArray_DIMS(sadA);
+
+    int maxd = shapecens[1];
+
+    npy_intp *featshape = new npy_intp[2];
+    featshape[0] = 3*samples[0]; featshape[1] = 13;
+
+
+	PyObject* features = PyArray_SimpleNew(2, featshape, NPY_FLOAT64);
+
+	double* features_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(features)));
+
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for (long int s=0; s<samples[0]; s++){
+			const long int i = rip[s];
+			double min_ncc = RAND_MAX, min_cens = RAND_MAX, min_sad = RAND_MAX,censdenom=0,nccdenom=0,saddenom=0,num;
+			const long int pos = i* shapecens[1];
+			int ncc_min_pos =0;
+			int census_min_pos=0;
+			int sad_min_pos=0;
+
+
+			for(int k=0; k< maxd; k++){
+					if(censp[pos+k] < min_cens){
+						min_cens = censp[pos+k];
+						census_min_pos=k;
+					}
+					if(nccp[pos+k] < min_ncc){
+						min_ncc = nccp[pos+k];
+						ncc_min_pos=k;
+					}
+					if(sadp[pos+k] < min_sad){
+						min_sad = sadp[pos+k];
+						sad_min_pos=k;
+					}
+
+			}
+
+
+			for(int k=0; k<maxd; k++){
+					num = censp[pos+k]-min_cens;
+					censdenom += exp( -( num*num )/CENSUSSIGMA );
+					num =nccp[pos+k]-min_ncc;
+					nccdenom += exp( -( num*num )/NCCSIGMA );
+					num = sadp[pos+k]-min_sad;
+					saddenom += exp( -( num*num )/SADSIGMA );
+			}
+
+
+			//cost census
+			features_data[s*3*13] = censp[pos+gtp[i]];
+
+			//cost ncc
+			features_data[s*3*13+1] = nccp[pos+gtp[i]];
+			//cost sad
+			features_data[s*3*13+2] = sadp[pos+gtp[i]];
+
+			//PKRN CENSUS
+			features_data[s*3*13+3] = ( min_cens +.01 ) / (censp[pos+gtp[i]]+.01);
+			//assert(  ( min_cens +.01 ) / (censp[pos+gtp[i]]+.01) > 0);
+			//PKRN NCC
+			features_data[s*3*13+4] = ( min_ncc +1.01 ) / (nccp[pos+gtp[i]]+1.01);
+			//assert( (( min_ncc +1.01 ) / (nccp[gtp[i]*shapencc[1]+i]+1.01))>0);
+			//PKRN SAD
+			features_data[s*3*13+5] = ( min_sad +.01 ) / (sadp[pos+gtp[i]]+.01);
+			//assert( ( min_sad +.01 ) / (sadp[gtp[i]*shapesad[1]+i]+.01)>0);
+
+
+			//MMN CENSUS
+			features_data[s*3*13+6] = censp[pos+gtp[i]] - min_cens;
+			//MMN NCC
+			features_data[s*3*13+7] = nccp[pos+gtp[i]] - min_ncc;
+			//MMN SAD
+			features_data[s*3*13+8] = sadp[pos+gtp[i]] - min_sad;
+
+			//AML CENSUS
+			features_data[s*3*13+9] = exp( -((features_data[s*3*13+6]*features_data[s*3*13+6]) /CENSUSSIGMA )) /censdenom ;
+			//AML NCC
+			features_data[s*3*13+10] = exp( -((features_data[s*3*13+7]*features_data[s*3*13+7]) /NCCSIGMA )) /nccdenom ;
+			//AML SAD
+			features_data[s*3*13+11] = exp( -((features_data[s*3*13+8]*features_data[s*3*13+8]) /SADSIGMA )) /saddenom ;
+			//label
+			features_data[s*3*13+12] = 1;
+
+			const int disp = gtp[i];
+            bool low = true;
+            bool high = true;
+            if(disp-2 <=0 )
+                    low = false;
+
+            if(disp+2 >= maxd)
+                    high = false;
+
+            int d1 = 0;
+            int d2 = 0;
+
+            if( low ){
+            	d1 = rand()%(disp-1);
+            }else{
+            	d1 = rand()%(maxd - (disp +2)) + disp+2;
+            }
+            if( high){
+            	d2 = rand()%(maxd - (disp +2)) + disp+2;
+            }else{
+            	d2 = rand()%(disp-1);
+            }
+
+
+
+
+			//select a random sample but not in the interval [ gt-1 ,gt+1 ]
+//			int s_r = rand()%maxd;
+//			while( s_r >= gtp[i]-1 && s_r <= gtp[i]+1 )
+//				s_r = rand()%maxd;
+
+			//cost census
+			features_data[((s*3)+1)*13] = censp[pos+d1];
+			//cost ncc
+			features_data[((s*3)+1)*13+1] = nccp[pos+d1];
+			//cost sad
+			features_data[((s*3)+1)*13+2] = sadp[pos+d1];
+
+			//PKRN CENSUS
+			features_data[((s*3)+1)*13+3] = ( min_cens +.01 ) / (censp[pos+d1]+.01);
+			//assert(  ( min_cens +.01 ) / (censp[pos+d1]+.01) > 0);
+			//PKRN NCC
+			features_data[((s*3)+1)*13+4] = ( min_ncc +1.01 ) / (nccp[pos+d1]+1.01);
+			//assert( ( min_ncc +1.01 ) / (nccp[d1*shapencc[1]+i]+1.01)>0);
+			//PKRN SAD
+			features_data[((s*3)+1)*13+5] = ( min_sad +.01 ) / (sadp[pos+d1]+.01);
+			//assert( ( min_sad +.01 ) / (sadp[d1*shapesad[1]+i]+.01)>0);
+
+
+			//MMN CENSUS
+			features_data[((s*3)+1)*13+6] = censp[pos+d1] - min_cens;
+			//MMN NCC
+			features_data[((s*3)+1)*13+7] = nccp[pos+d1] - min_ncc;
+			//MMN SAD
+			features_data[((s*3)+1)*13+8] = sadp[pos+d1] - min_sad;
+
+			//AML CENSUS
+			features_data[((s*3)+1)*13+9] = exp( -((features_data[((s*3)+1)*13+6]*features_data[((s*3)+1)*13+6]) /CENSUSSIGMA )) /censdenom ;
+			//AML NCC
+			features_data[((s*3)+1)*13+10] = exp( -((features_data[((s*3)+1)*13+7]*features_data[((s*3)+1)*13+7]) /NCCSIGMA )) /nccdenom ;
+			//AML SAD
+			features_data[((s*3)+1)*13+11] = exp( -((features_data[((s*3)+1)*13+8]*features_data[((s*3)+1)*13+8]) /SADSIGMA )) /saddenom ;
+			//label
+			features_data[((s*3)+1)*13+12] = 0;
+
+
+
+//			//Get a strong wrong candidate based on a random matcher
+//			int m_r = rand()%3;
+//
+//			// 0->census, 1->ncc, 2->sad
+//			int strong_pos=0;
+//			double strong_min = RAND_MAX;
+//
+//			if(m_r == 0){
+//				for(int k=0; k<maxd; k++){
+//					if ((k >= census_min_pos -1 && k<=census_min_pos +1) || (k >= gtp[i]-1 && k <= gtp[i]+1))
+//						continue;
+//					if( censp[pos+k] < strong_min  ){
+//						strong_min = censp[pos+k];
+//						strong_pos = k;
+//					}
+//				}
+//			}else if( m_r == 1 ){
+//				for(int k=0; k<maxd; k++){
+//					if ( (k >= ncc_min_pos-1 && k<=ncc_min_pos+1 ) || (k >= gtp[i]-1 && k <= gtp[i]+1))
+//						continue;
+//					if( nccp[k*shapencc[1]+i] < strong_min  ){
+//						strong_min = nccp[k*shapencc[1]+i];
+//						strong_pos = k;
+//					}
+//				}
+//			}else{
+//
+//				for(int k=0; k<maxd; k++){
+//					if ((k >= sad_min_pos-1 && k<=sad_min_pos+1  ) || (k >= gtp[i]-1 && k <= gtp[i]+1))
+//						continue;
+//					if( sadp[k*shapesad[1]+i] < strong_min  ){
+//						strong_min = sadp[k*shapesad[1]+i];
+//						strong_pos = k;
+//					}
+//				}
+//			}
+
+
+			//cost census
+			features_data[((s*3)+2)*13] = censp[pos+d2];
+			//cost ncc
+			features_data[((s*3)+2)*13+1] = nccp[pos+d2];
+			//cost sad
+			features_data[((s*3)+2)*13+2] = sadp[pos+d2];
+
+			//PKRN CENSUS
+			features_data[((s*3)+2)*13+3] = ( min_cens +.01 ) / (censp[pos+d2]+.01);
+			//assert(  ( min_cens +.01 ) / (censp[pos+d2]+.01) > 0);
+			//PKRN NCC
+			features_data[((s*3)+2)*13+4] = ( min_ncc +1.01 ) / (nccp[pos+d2]+1.01);
+			//assert( ( min_ncc +1.01 ) / (nccp[d2*shapencc[1]+i]+1.01)>0);
+			//PKRN SAD
+			features_data[((s*3)+2)*13+5] = ( min_sad +.01 ) / (sadp[pos+d2]+.01);
+			//assert( ( min_sad +.01 ) / (sadp[d2*shapesad[1]+i]+.01)>0);
+
+
+			//MMN CENSUS
+			features_data[((s*3)+2)*13+6] = censp[pos+d2] - min_cens;
+			//MMN NCC
+			features_data[((s*3)+2)*13+7] = nccp[pos+d2] - min_ncc;
+			//MMN SAD
+			features_data[((s*3)+2)*13+8] = sadp[pos+d2] - min_sad;
+
+			//AML CENSUS
+			features_data[((s*3)+2)*13+9] = exp( -((features_data[((s*3)+2)*13+6]*features_data[((s*3)+2)*13+6]) /CENSUSSIGMA )) /censdenom ;
+			//AML NCC
+			features_data[((s*3)+2)*13+10] = exp( -((features_data[((s*3)+2)*13+7]*features_data[((s*3)+2)*13+7]) /NCCSIGMA )) /nccdenom ;
+			//AML SAD
+			features_data[((s*3)+2)*13+11] = exp( -((features_data[((s*3)+2)*13+8]*features_data[((s*3)+2)*13+8]) /SADSIGMA )) /saddenom ;
+			//label
+			features_data[((s*3)+2)*13+12] = 0;
+
+
+		}
+	}
+
+	return features;
+}
+
+
+PyObject* extract_features4(PyObject* cost_census, PyObject* cost_ncc,PyObject* cost_sobel, PyObject* cost_sad , PyObject *gt, PyObject *row_indices ){
+
+	srand (time(NULL));
+
+    PyArrayObject* censA = reinterpret_cast<PyArrayObject*>(cost_census);
+    PyArrayObject* nccA = reinterpret_cast<PyArrayObject*>(cost_ncc);
+    PyArrayObject* sobA = reinterpret_cast<PyArrayObject*>(cost_sobel);
+    PyArrayObject* sadA = reinterpret_cast<PyArrayObject*>(cost_sad);
+    PyArrayObject* gtA = reinterpret_cast<PyArrayObject*>(gt);
+    PyArrayObject* riA = reinterpret_cast<PyArrayObject*>(row_indices);
+
+    double * censp = reinterpret_cast<double*>(PyArray_DATA(censA));
+    double * nccp = reinterpret_cast<double*>(PyArray_DATA(nccA));
+    double * sobp = reinterpret_cast<double*>(PyArray_DATA(sobA));
+    double * sadp = reinterpret_cast<double*>(PyArray_DATA(sadA));
+    int * gtp = reinterpret_cast<int*>(PyArray_DATA(gtA));
+    int * rip = reinterpret_cast<int*>(PyArray_DATA(riA));
+
+
+
+    npy_intp *samples = PyArray_DIMS(riA);
+    npy_intp *shape = PyArray_DIMS(gtA);
+    npy_intp *shapecens = PyArray_DIMS(censA);
+    npy_intp *shapencc = PyArray_DIMS(nccA);
+    npy_intp *shapesob = PyArray_DIMS(sobA);
+    npy_intp *shapesad = PyArray_DIMS(sadA);
+
+    int maxd = shapecens[1];
+
+    npy_intp *featshape = new npy_intp[2];
+    featshape[0] = 3*samples[0]; featshape[1] = 4*4+1;
+
+
+	PyObject* features = PyArray_SimpleNew(2, featshape, NPY_FLOAT64);
+
+	double* features_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(features)));
+
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for (long int s=0; s<samples[0]; s++){
+			const long int i = rip[s];
+			double min_ncc = RAND_MAX, min_cens = RAND_MAX, min_sob=RAND_MAX ,min_sad = RAND_MAX,censdenom=0,nccdenom=0, sobdenom=0 ,saddenom=0,num;
+			const long int pos = i* shapecens[1];
+
+
+
+			for(int k=0; k< maxd; k++){
+					if(censp[pos+k] < min_cens){
+						min_cens = censp[pos+k];
+					}
+					if(nccp[pos+k] < min_ncc){
+						min_ncc = nccp[pos+k];
+					}
+					if(sobp[pos+k] < min_sob){
+						min_sob = sobp[pos+k];
+					}
+					if(sadp[pos+k] < min_sad){
+						min_sad = sadp[pos+k];
+					}
+
+			}
+
+
+			for(int k=0; k<maxd; k++){
+					num = censp[pos+k]-min_cens;
+					censdenom += exp( -( num*num )/CENSUSSIGMA );
+					num =nccp[pos+k]-min_ncc;
+					nccdenom += exp( -( num*num )/NCCSIGMA );
+					num = sobp[pos+k]-min_sob;
+					sobdenom += exp( -( num*num )/SADSIGMA );
+					num = sadp[pos+k]-min_sad;
+					saddenom += exp( -( num*num )/SADSIGMA );
+			}
+
+
+			//cost census
+			features_data[s*3*featshape[1]] = censp[pos+gtp[i]];
+			//cost ncc
+			features_data[s*3*featshape[1]+1] = nccp[pos+gtp[i]];
+			//cost sobel
+			features_data[s*3*featshape[1]+2] = sobp[pos+gtp[i]];
+			//cost sad
+			features_data[s*3*featshape[1]+3] = sadp[pos+gtp[i]];
+
+			//PKRN CENSUS
+			features_data[s*3*featshape[1]+4] = ( min_cens +.01 ) / (censp[pos+gtp[i]]+.01);
+			//assert(  ( min_cens +.01 ) / (censp[pos+gtp[i]]+.01) > 0);
+			//PKRN NCC
+			features_data[s*3*featshape[1]+5] = ( min_ncc +1.01 ) / (nccp[pos+gtp[i]]+1.01);
+			//assert( (( min_ncc +1.01 ) / (nccp[gtp[i]*shapencc[1]+i]+1.01))>0);
+			//PKRN Sobel
+			features_data[s*3*featshape[1]+6] = ( min_sob +.01 ) / (sobp[pos+gtp[i]]+.01);
+			//PKRN SAD
+			features_data[s*3*featshape[1]+7] = ( min_sad +.01 ) / (sadp[pos+gtp[i]]+.01);
+			//assert( ( min_sad +.01 ) / (sadp[gtp[i]*shapesad[1]+i]+.01)>0);
+
+
+			//MMN CENSUS
+			features_data[s*3*featshape[1]+8] = censp[pos+gtp[i]] - min_cens;
+			//MMN NCC
+			features_data[s*3*featshape[1]+9] = nccp[pos+gtp[i]] - min_ncc;
+			//MMN Sobel
+			features_data[s*3*featshape[1]+10] = sobp[pos+gtp[i]] - min_sob;
+			//MMN SAD
+			features_data[s*3*featshape[1]+11] = sadp[pos+gtp[i]] - min_sad;
+
+			//AML CENSUS
+			features_data[s*3*featshape[1]+12] = exp( -((features_data[s*3*featshape[1]+8]*features_data[s*3*featshape[1]+8]) /CENSUSSIGMA )) /censdenom ;
+			//AML NCC
+			features_data[s*3*featshape[1]+13] = exp( -((features_data[s*3*featshape[1]+9]*features_data[s*3*featshape[1]+9]) /NCCSIGMA )) /nccdenom ;
+			//AML SAD
+			features_data[s*3*featshape[1]+14] = exp( -((features_data[s*3*featshape[1]+10]*features_data[s*3*featshape[1]+10]) /SADSIGMA )) /sobdenom ;
+			//AML SAD
+			features_data[s*3*featshape[1]+15] = exp( -((features_data[s*3*featshape[1]+11]*features_data[s*3*featshape[1]+11]) /SADSIGMA )) /saddenom ;
+			//label
+			features_data[s*3*featshape[1]+16] = 1;
+
+			const int disp = gtp[i];
+            bool low = true;
+            bool high = true;
+            if(disp-2 <=0 )
+                    low = false;
+
+            if(disp+2 >= maxd)
+                    high = false;
+
+            int d1 = 0;
+            int d2 = 0;
+
+            if( low ){
+            	d1 = rand()%(disp-1);
+            }else{
+            	d1 = rand()%(maxd - (disp +2)) + disp+2;
+            }
+            if( high){
+            	d2 = rand()%(maxd - (disp +2)) + disp+2;
+            }else{
+            	d2 = rand()%(disp-1);
+            }
+
+
+
+
+			//select a random sample but not in the interval [ gt-1 ,gt+1 ]
+//			int s_r = rand()%maxd;
+//			while( s_r >= gtp[i]-1 && s_r <= gtp[i]+1 )
+//				s_r = rand()%maxd;
+
+			//cost census
+			features_data[((s*3)+1)*featshape[1]] = censp[pos+d1];
+			//cost ncc
+			features_data[((s*3)+1)*featshape[1]+1] = nccp[pos+d1];
+			//cost sad
+			features_data[((s*3)+1)*featshape[1]+2] = sobp[pos+d1];
+			//cost sad
+			features_data[((s*3)+1)*featshape[1]+3] = sadp[pos+d1];
+
+			//PKRN CENSUS
+			features_data[((s*3)+1)*featshape[1]+4] = ( min_cens +.01 ) / (censp[pos+d1]+.01);
+			//assert(  ( min_cens +.01 ) / (censp[pos+d1]+.01) > 0);
+			//PKRN NCC
+			features_data[((s*3)+1)*featshape[1]+5] = ( min_ncc +1.01 ) / (nccp[pos+d1]+1.01);
+			//assert( ( min_ncc +1.01 ) / (nccp[d1*shapencc[1]+i]+1.01)>0);
+			//PKRN SAD
+			features_data[((s*3)+1)*featshape[1]+6] = ( min_sob +.01 ) / (sobp[pos+d1]+.01);
+			//PKRN SAD
+			features_data[((s*3)+1)*featshape[1]+7] = ( min_sad +.01 ) / (sadp[pos+d1]+.01);
+			//assert( ( min_sad +.01 ) / (sadp[d1*shapesad[1]+i]+.01)>0);
+
+
+			//MMN CENSUS
+			features_data[((s*3)+1)*featshape[1]+8] = censp[pos+d1] - min_cens;
+			//MMN NCC
+			features_data[((s*3)+1)*featshape[1]+9] = nccp[pos+d1] - min_ncc;
+			//MMN SAD
+			features_data[((s*3)+1)*featshape[1]+10] = sobp[pos+d1] - min_sob;
+			//MMN SAD
+			features_data[((s*3)+1)*featshape[1]+11] = sadp[pos+d1] - min_sad;
+
+			//AML CENSUS
+			features_data[((s*3)+1)*featshape[1]+12] = exp( -((features_data[((s*3)+1)*featshape[1]+8]*features_data[((s*3)+1)*featshape[1]+8]) /CENSUSSIGMA )) /censdenom ;
+			//AML NCC
+			features_data[((s*3)+1)*featshape[1]+13] = exp( -((features_data[((s*3)+1)*featshape[1]+9]*features_data[((s*3)+1)*featshape[1]+9]) /NCCSIGMA )) /nccdenom ;
+			//AML SOB
+			features_data[((s*3)+1)*featshape[1]+14] = exp( -((features_data[((s*3)+1)*featshape[1]+10]*features_data[((s*3)+1)*featshape[1]+10]) /SADSIGMA )) /sobdenom ;
+			//AML SAD
+			features_data[((s*3)+1)*featshape[1]+15] = exp( -((features_data[((s*3)+1)*featshape[1]+11]*features_data[((s*3)+1)*featshape[1]+11]) /SADSIGMA )) /saddenom ;
+			//label
+			features_data[((s*3)+1)*featshape[1]+16] = 0;
+
+
+
+//			//Get a strong wrong candidate based on a random matcher
+//			int m_r = rand()%3;
+//
+//			// 0->census, 1->ncc, 2->sad
+//			int strong_pos=0;
+//			double strong_min = RAND_MAX;
+//
+//			if(m_r == 0){
+//				for(int k=0; k<maxd; k++){
+//					if ((k >= census_min_pos -1 && k<=census_min_pos +1) || (k >= gtp[i]-1 && k <= gtp[i]+1))
+//						continue;
+//					if( censp[pos+k] < strong_min  ){
+//						strong_min = censp[pos+k];
+//						strong_pos = k;
+//					}
+//				}
+//			}else if( m_r == 1 ){
+//				for(int k=0; k<maxd; k++){
+//					if ( (k >= ncc_min_pos-1 && k<=ncc_min_pos+1 ) || (k >= gtp[i]-1 && k <= gtp[i]+1))
+//						continue;
+//					if( nccp[k*shapencc[1]+i] < strong_min  ){
+//						strong_min = nccp[k*shapencc[1]+i];
+//						strong_pos = k;
+//					}
+//				}
+//			}else{
+//
+//				for(int k=0; k<maxd; k++){
+//					if ((k >= sad_min_pos-1 && k<=sad_min_pos+1  ) || (k >= gtp[i]-1 && k <= gtp[i]+1))
+//						continue;
+//					if( sadp[k*shapesad[1]+i] < strong_min  ){
+//						strong_min = sadp[k*shapesad[1]+i];
+//						strong_pos = k;
+//					}
+//				}
+//			}
+
+
+			//cost census
+			features_data[((s*3)+2)*featshape[1]] = censp[pos+d2];
+			//cost ncc
+			features_data[((s*3)+2)*featshape[1]+1] = nccp[pos+d2];
+			//cost sad
+			features_data[((s*3)+2)*featshape[1]+2] = sobp[pos+d2];
+			//cost sad
+			features_data[((s*3)+2)*featshape[1]+3] = sadp[pos+d2];
+
+			//PKRN CENSUS
+			features_data[((s*3)+2)*featshape[1]+4] = ( min_cens +.01 ) / (censp[pos+d2]+.01);
+			//assert(  ( min_cens +.01 ) / (censp[pos+d2]+.01) > 0);
+			//PKRN NCC
+			features_data[((s*3)+2)*featshape[1]+5] = ( min_ncc +1.01 ) / (nccp[pos+d2]+1.01);
+			//assert( ( min_ncc +1.01 ) / (nccp[d2*shapencc[1]+i]+1.01)>0);
+			//PKRN SOB
+			features_data[((s*3)+2)*featshape[1]+6] = ( min_sob +.01 ) / (sobp[pos+d2]+.01);
+			//PKRN SAD
+			features_data[((s*3)+2)*featshape[1]+7] = ( min_sad +.01 ) / (sadp[pos+d2]+.01);
+			//assert( ( min_sad +.01 ) / (sadp[d2*shapesad[1]+i]+.01)>0);
+
+
+			//MMN CENSUS
+			features_data[((s*3)+2)*featshape[1]+8] = censp[pos+d2] - min_cens;
+			//MMN NCC
+			features_data[((s*3)+2)*featshape[1]+9] = nccp[pos+d2] - min_ncc;
+			//MMN SOB
+			features_data[((s*3)+2)*featshape[1]+10] = sobp[pos+d2] - min_sob;
+			//MMN SAD
+			features_data[((s*3)+2)*featshape[1]+11] = sadp[pos+d2] - min_sad;
+
+			//AML CENSUS
+			features_data[((s*3)+2)*featshape[1]+12] = exp( -((features_data[((s*3)+2)*featshape[1]+8]*features_data[((s*3)+2)*featshape[1]+8]) /CENSUSSIGMA )) /censdenom ;
+			//AML NCC
+			features_data[((s*3)+2)*featshape[1]+13] = exp( -((features_data[((s*3)+2)*featshape[1]+9]*features_data[((s*3)+2)*featshape[1]+9]) /NCCSIGMA )) /nccdenom ;
+			//AML SOB
+			features_data[((s*3)+2)*featshape[1]+14] = exp( -((features_data[((s*3)+2)*featshape[1]+10]*features_data[((s*3)+2)*featshape[1]+10]) /SADSIGMA )) /sobdenom ;
+			//AML SAD
+			features_data[((s*3)+2)*featshape[1]+15] = exp( -((features_data[((s*3)+2)*featshape[1]+11]*features_data[((s*3)+2)*featshape[1]+11]) /SADSIGMA )) /saddenom ;
+			//label
+			features_data[((s*3)+2)*featshape[1]+16] = 0;
+
+
+		}
+	}
+
+	return features;
+}
+
+
+double PKRN(double mincost, double dcost ){
+
+
+        mincost = (mincost<0)?mincost+1:mincost;
+        dcost = (dcost>0)?dcost:0.01;
+        mincost = (mincost>0.01)?mincost:0.01;
+        assert(dcost!=0);
+        assert((mincost/dcost) >=0);
+
+        return (mincost/dcost);
+
+}
+
+double MMN(double mincost, double dcost){
+
+        mincost = (mincost<0)?mincost+1:mincost;
+        return dcost - mincost;
+}
+
+double AML(double denom,double mincost, double dcost, double sigma){
+
+        double num;
+        num = dcost - mincost;
+        assert(denom !=0);
+        assert(isnan(exp(-( (num * num)/sigma ))/denom)==0);
+        return exp(-( (num * num)/sigma ))/denom;
+
+
+}
+
+PyObject* extract_testing_features_soft(PyObject* cost_census, PyObject* cost_ncc, PyObject* cost_sad ){
+    PyArrayObject* censA = reinterpret_cast<PyArrayObject*>(cost_census);
+    PyArrayObject* nccA = reinterpret_cast<PyArrayObject*>(cost_ncc);
+    PyArrayObject* sadA = reinterpret_cast<PyArrayObject*>(cost_sad);
+
+    double * censp = reinterpret_cast<double*>(PyArray_DATA(censA));
+    double * nccp = reinterpret_cast<double*>(PyArray_DATA(nccA));
+    double * sadp = reinterpret_cast<double*>(PyArray_DATA(sadA));
+
+    npy_intp *shapecens = PyArray_DIMS(censA);
+    npy_intp *shapencc = PyArray_DIMS(nccA);
+    npy_intp *shapesad = PyArray_DIMS(sadA);
+
+
+    npy_intp *featshape = new npy_intp[2];
+    featshape[0] = shapecens[0]*shapecens[1]; featshape[1] = 12;
+
+	PyObject* features = PyArray_SimpleNew(2, featshape, NPY_FLOAT64);
+
+	double* features_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(features)));
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for (unsigned long int i=0; i <shapecens[0]; i++ ){
+
+			const unsigned long int pos = i* shapecens[1];
+			double min_ncc = RAND_MAX, min_cens = RAND_MAX, min_sad = RAND_MAX,censdenom=0,nccdenom=0,saddenom=0,num;
+
+			for(int k=0; k< shapecens[1]; k++){
+					if(censp[pos+k] < min_cens){
+						min_cens = censp[pos+k];
+					}
+					if(nccp[k*shapencc[1]+i] < min_ncc){
+						min_ncc = nccp[k*shapencc[1]+i];
+					}
+					if(sadp[k*shapesad[1]+i] < min_sad){
+						min_sad = sadp[k*shapesad[1]+i];
+					}
+
+			}
+
+
+			for(int k=0; k<shapecens[1]; k++){
+					num = censp[pos+k]-min_cens;
+					censdenom += exp( -( num*num )/CENSUSSIGMA );
+					num =nccp[k*shapencc[1]+i]-min_ncc;
+					nccdenom += exp( -( num*num )/NCCSIGMA );
+					num = sadp[k*shapesad[1]+i]-min_sad;
+					saddenom += exp( -( num*num )/SADSIGMA );
+			}
+
+
+			for(int j=0; j< shapecens[1]; j++){
+				//Census cost
+				const unsigned long int s_i = i*shapecens[1]*12 + j*12;
+				features_data[ s_i  ] = censp[pos+j];
+				//Ncc cost
+				features_data[s_i +1] = nccp[j*shapencc[1]+i];
+				//Sad cost
+				features_data[s_i +2] = sadp[j*shapesad[1]+i];
+
+				//PKRN CENSUS
+				features_data[s_i +3] =  PKRN(min_cens,censp[pos+j]);
+				//assert(  ( min_cens +.01 ) / (censp[pos+j]+.01) > 0);
+				//PKRN NCC
+				features_data[s_i +4] =  PKRN(min_ncc,nccp[j*shapencc[1]+i]+1);
+				//assert(  ( min_ncc +1.01 ) / (nccp[pos+j]+1.01) > 0);
+				//PKRN SAD
+				features_data[s_i +5] =  PKRN(min_sad,sadp[j*shapesad[1]+i]); //( min_sad +.01 ) / (sadp[j*shapesad[1]+i]+.01);
+				//ssert(  ( min_sad +1.01 ) / (sadp[pos+j]+1.01) > 0);
+
+				//MMN CENSUS
+				features_data[s_i+6] = MMN(min_cens,censp[pos+j]);
+				//MMN NCC
+				features_data[s_i+7] = MMN(min_ncc,nccp[j*shapencc[1]+i]+1);
+				//MMN SAD
+				features_data[s_i+8] = MMN(min_sad,sadp[j*shapesad[1]+i] );
+
+				//AML CENSUS
+				features_data[s_i+9] = AML(censdenom,min_cens,censp[pos+j],CENSUSSIGMA);
+				//AML NCC
+				features_data[s_i+10] = AML(nccdenom,min_ncc+1,nccp[j*shapencc[1]+i]+1,NCCSIGMA);
+				//AML SAD
+				features_data[s_i+11] = AML(saddenom,min_sad,sadp[j*shapesad[1]+i],SADSIGMA);
+
+
+			}
+
+		}
+
+	}
+
+	return features;
+}
+
+
+
+PyObject* extract_features_soft(PyObject* cost_census, PyObject* cost_ncc, PyObject* cost_sad , PyObject *gt, PyObject *row_indices ){
+
+	unsigned int timer = time(NULL);
+	std::cout << "Random seed: " << timer << std::endl;
+	srand (timer);
+
+    PyArrayObject* censA = reinterpret_cast<PyArrayObject*>(cost_census);
+    PyArrayObject* nccA = reinterpret_cast<PyArrayObject*>(cost_ncc);
+    PyArrayObject* sadA = reinterpret_cast<PyArrayObject*>(cost_sad);
+    PyArrayObject* gtA = reinterpret_cast<PyArrayObject*>(gt);
+    PyArrayObject* riA = reinterpret_cast<PyArrayObject*>(row_indices);
+
+    double * censp = reinterpret_cast<double*>(PyArray_DATA(censA));
+    double * nccp = reinterpret_cast<double*>(PyArray_DATA(nccA));
+    double * sadp = reinterpret_cast<double*>(PyArray_DATA(sadA));
+    int * gtp = reinterpret_cast<int*>(PyArray_DATA(gtA));
+    int * rip = reinterpret_cast<int*>(PyArray_DATA(riA));
+
+
+
+    npy_intp *samples = PyArray_DIMS(riA);
+    npy_intp *shape = PyArray_DIMS(gtA);
+    npy_intp *shapecens = PyArray_DIMS(censA);
+    npy_intp *shapencc = PyArray_DIMS(nccA);
+    npy_intp *shapesad = PyArray_DIMS(sadA);
+
+    int maxd = shapecens[1];
+
+    npy_intp *featshape = new npy_intp[2];
+    featshape[0] = 3*samples[0]; featshape[1] = 13;
+
+	PyObject* features = PyArray_SimpleNew(2, featshape, NPY_FLOAT64);
+
+	double* features_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(features)));
+
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for ( unsigned long int s=0; s<samples[0]; s++){
+
+
+			const unsigned long int i = rip[s];
+			const int disp = gtp[i];
+			if(disp <0 || disp >= maxd )
+				continue;
+
+			int ofc = rand()%3 -1;
+            if((disp+ofc) <0){
+                    ofc = 0;
+            }else if((disp+ofc)>=maxd){
+                    ofc=0;
+            }
+
+
+
+			double min_ncc = RAND_MAX, min_cens = RAND_MAX, min_sad = RAND_MAX,censdenom=0,nccdenom=0,saddenom=0,num;
+
+			const unsigned long int pos = i* shapecens[1];
+			int ncc_min_pos =0;
+			int census_min_pos=0;
+			int sad_min_pos=0;
+
+
+			for(int k=0; k< maxd; k++){
+					if(censp[pos+k] < min_cens){
+						min_cens = censp[pos+k];
+						census_min_pos=k;
+					}
+					if(nccp[pos+k] < min_ncc){
+						min_ncc = nccp[pos+k];
+						ncc_min_pos=k;
+					}
+					if(sadp[pos+k] < min_sad){
+						min_sad = sadp[pos+k];
+						sad_min_pos=k;
+					}
+
+			}
+
+
+			for(int k=0; k<maxd; k++){
+					num = censp[pos+k]-min_cens;
+					censdenom += exp( -( num*num )/CENSUSSIGMA );
+					num =nccp[pos+k]-min_ncc;
+					nccdenom += exp( -( num*num )/NCCSIGMA );
+					num = sadp[pos+k]-min_sad;
+					saddenom += exp( -( num*num )/SADSIGMA );
+			}
+
+
+			//cost census
+			features_data[s*3*13] = censp[pos+ disp+ofc];
+
+			//cost ncc
+			features_data[s*3*13+1] = nccp[pos+ disp+ofc];
+			//cost sad
+			features_data[s*3*13+2] = sadp[pos+ disp+ofc];
+
+			//PKRN CENSUS
+			features_data[s*3*13+3] = PKRN(min_cens,censp[pos+ disp+ofc]);
+			//assert(  ( min_cens +.01 ) / (censp[pos+gtp[i]]+.01) > 0);
+			//PKRN NCC
+			features_data[s*3*13+4] = PKRN(min_ncc,nccp[pos+ disp+ofc]+1);;
+			//assert( (( min_ncc +1.01 ) / (nccp[gtp[i]*shapencc[1]+i]+1.01))>0);
+			//PKRN SAD
+			features_data[s*3*13+5] = PKRN(min_sad,sadp[pos+ disp+ofc]);
+			//assert( ( min_sad +.01 ) / (sadp[gtp[i]*shapesad[1]+i]+.01)>0);
+
+
+			//MMN CENSUS
+			features_data[s*3*13+6] = MMN(min_cens,censp[pos+ disp+ofc]);
+			//MMN NCC
+			features_data[s*3*13+7] = MMN(min_ncc,nccp[pos+ disp+ofc]+1);
+			//MMN SAD
+			features_data[s*3*13+8] = MMN(min_sad,sadp[pos+ disp+ofc]);
+
+			//AML CENSUS
+			features_data[s*3*13+9] = AML(censdenom,min_cens,censp[pos+ disp+ofc],CENSUSSIGMA);
+			//AML NCC
+			features_data[s*3*13+10] = AML(nccdenom,min_ncc+1,nccp[pos+ disp+ofc]+1,NCCSIGMA);
+			//AML SAD
+			features_data[s*3*13+11] = AML(saddenom,min_sad,sadp[pos+ disp+ofc],SADSIGMA);
+			//label
+			features_data[s*3*13+12] = 1;
+
+            bool low = true;
+            bool high = true;
+            if(disp-2 <=0 )
+                    low = false;
+
+            if(disp+2 >= maxd)
+                    high = false;
+
+            int d1 = 0;
+            int d2 = 0;
+
+            if( low ){
+            	d1 = rand()%(disp-2);
+            }else{
+            	d1 = rand()%(maxd - (disp +1)) + disp+2;
+            }
+
+
+
+			//select a random sample but not in the interval [ gt-1 ,gt+1 ]
+//			int s_r = rand()%maxd;
+//			while( s_r >= gtp[i]-1 && s_r <= gtp[i]+1 )
+//				s_r = rand()%maxd;
+
+			//cost census
+			features_data[((s*3)+1)*13] = censp[pos+d1];
+			//cost ncc
+			features_data[((s*3)+1)*13+1] = nccp[pos+d1];
+			//cost sad
+			features_data[((s*3)+1)*13+2] = sadp[pos+d1];
+
+			//PKRN CENSUS
+			features_data[((s*3)+1)*13+3] = PKRN(min_cens,censp[pos+ d1]);
+			//assert(  ( min_cens +.01 ) / (censp[pos+d1]+.01) > 0);
+			//PKRN NCC
+			features_data[((s*3)+1)*13+4] = PKRN(min_ncc,nccp[pos+d1]+1);
+			//assert( ( min_ncc +1.01 ) / (nccp[d1*shapencc[1]+i]+1.01)>0);
+			//PKRN SA
+			features_data[((s*3)+1)*13+5] = PKRN(min_sad,sadp[pos+d1]);
+			//assert( ( min_sad +.01 ) / (sadp[d1*shapesad[1]+i]+.01)>0);
+
+
+			//MMN CENSUS
+			features_data[((s*3)+1)*13+6] = MMN(min_cens,censp[pos+ d1]);
+			//MMN NCC
+			features_data[((s*3)+1)*13+7] =  MMN(min_ncc,nccp[pos+d1]+1);
+			//MMN SAD
+			features_data[((s*3)+1)*13+8] = MMN(min_sad,sadp[pos+d1]);
+
+			//AML CENSUS
+			features_data[((s*3)+1)*13+9] = AML(censdenom,min_cens,censp[pos+ d1],CENSUSSIGMA);
+			//AML NCC
+			features_data[((s*3)+1)*13+10] = AML(nccdenom,min_ncc+1,nccp[pos+d1]+1,NCCSIGMA);
+			//AML SAD
+			features_data[((s*3)+1)*13+11] = AML(saddenom,min_sad,sadp[pos+d1],SADSIGMA);
+			//label
+			features_data[((s*3)+1)*13+12] = 0;
+
+            if( high){
+            	d2 = rand()%(maxd - (disp +1)) + disp+2;
+            }else{
+            	d2 = rand()%(disp-2);
+            }
+
+			//cost census
+			features_data[((s*3)+2)*13] = censp[pos+d2];
+			//cost ncc
+			features_data[((s*3)+2)*13+1] = nccp[pos+d2];
+			//cost sad
+			features_data[((s*3)+2)*13+2] = sadp[pos+d2];
+
+			//PKRN CENSUS
+			features_data[((s*3)+2)*13+3] = PKRN(min_cens,censp[pos+ d2]);
+			//assert(  ( min_cens +.01 ) / (censp[pos+d2]+.01) > 0);
+			//PKRN NCC
+			features_data[((s*3)+2)*13+4] = PKRN(min_ncc,nccp[pos+d2]+1);
+			//assert( ( min_ncc +1.01 ) / (nccp[d2*shapencc[1]+i]+1.01)>0);
+			//PKRN SAD
+			features_data[((s*3)+2)*13+5] = PKRN(min_sad,sadp[pos+d2]);
+			//assert( ( min_sad +.01 ) / (sadp[d2*shapesad[1]+i]+.01)>0);
+
+
+			//MMN CENSUS
+			features_data[((s*3)+2)*13+6] = MMN(min_cens,censp[pos+ d2]);
+			//MMN NCC
+			features_data[((s*3)+2)*13+7] = MMN(min_ncc,nccp[pos+d2]+1);
+			//MMN SAD
+			features_data[((s*3)+2)*13+8] = MMN(min_sad,sadp[pos+d2]);
+
+			//AML CENSUS
+			features_data[((s*3)+2)*13+9] = AML(censdenom,min_cens,censp[pos+ d2],CENSUSSIGMA);
+			//AML NCC
+			features_data[((s*3)+2)*13+10] = AML(nccdenom,min_ncc+1,nccp[pos+d2]+1,NCCSIGMA);
+			//AML SAD
+			features_data[((s*3)+2)*13+11] = AML(saddenom,min_sad,sadp[pos+d2],SADSIGMA);
+			//label
+			features_data[((s*3)+2)*13+12] = 0;
+
+
+		}
+	}
+
+	return features;
+}
+
+
+
+
+PyObject* swap_axes(PyObject* cost ){
+
+
+    PyArrayObject* costA = reinterpret_cast<PyArrayObject*>(cost);
+    double * costp = reinterpret_cast<double*>(PyArray_DATA(costA));
+    npy_intp *shape = PyArray_DIMS(costA);
+
+    npy_intp *res_shape = new npy_intp[3];
+    res_shape[0] = shape[1]; res_shape[1] = shape[2], res_shape[2] = shape[0] ;
+
+
+	PyObject* res = PyArray_SimpleNew(3, res_shape, NPY_FLOAT64);
+
+	double* res_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for(int i=0; i<res_shape[0]*res_shape[1]; i++){
+			for(int j=0; j<res_shape[2]; j++){
+
+				res_data[ i*res_shape[2] +j ] = costp[ j*res_shape[0]*res_shape[1] +i];
+			}
+		}
+	}
+
+	return res;
+}
+
+PyObject* swap_axes_back(PyObject* cost ){
+
+
+    PyArrayObject* costA = reinterpret_cast<PyArrayObject*>(cost);
+    double * costp = reinterpret_cast<double*>(PyArray_DATA(costA));
+    npy_intp *shape = PyArray_DIMS(costA);
+
+    npy_intp *res_shape = new npy_intp[3];
+    res_shape[0] = shape[2]; res_shape[1] = shape[0], res_shape[2] = shape[1] ;
+
+
+	PyObject* res = PyArray_SimpleNew(3, res_shape, NPY_FLOAT64);
+
+	double* res_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for(int i=0; i<res_shape[1]*res_shape[2]; i++){
+			for(int j=0; j<res_shape[0]; j++){
+
+				res_data[  j*res_shape[1]*res_shape[2] +i  ] = costp[i*res_shape[0] +j];
+			}
+		}
+	}
+
+	return res;
+}
+
+PyObject* get_cost(PyObject* cost ){
+
+
+    PyArrayObject* costA = reinterpret_cast<PyArrayObject*>(cost);
+    double * costp = reinterpret_cast<double*>(PyArray_DATA(costA));
+    npy_intp *shape = PyArray_DIMS(costA);
+
+    npy_intp *res_shape = new npy_intp[3];
+    res_shape[0] = shape[0]; res_shape[1] = shape[1], res_shape[2] = shape[2] ;
+
+
+	PyObject* res = PyArray_SimpleNew(3, res_shape, NPY_FLOAT64);
+
+	double* res_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for(int i=0; i<shape[0]*shape[1]; i++){
+			for(int j=0; j<shape[2]; j++){
+
+				res_data[ i*shape[2] +j ] = costp[ i*shape[2]*shape[3] +j*shape[3]];
+			}
+		}
+	}
+
+	return res;
+}
+
+PyObject* get_right_cost(PyObject* cost ){
+
+
+    PyArrayObject* costA = reinterpret_cast<PyArrayObject*>(cost);
+    double * costp = reinterpret_cast<double*>(PyArray_DATA(costA));
+    npy_intp *shape = PyArray_DIMS(costA);
+
+    npy_intp *res_shape = new npy_intp[3];
+    res_shape[0] = shape[0]; res_shape[1] = shape[1], res_shape[2] = shape[2] ;
+
+
+	PyObject* res = PyArray_SimpleNew(3, res_shape, NPY_FLOAT64);
+
+	double* res_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
+	int fill_size = shape[0]*shape[1]*shape[2];
+	std::fill_n(res_data,fill_size, costp[0]);
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for(int d=0; d<shape[2]; d++){
+			for(int i=0; i<shape[0]; i++){
+
+				for(int j=0; j<(shape[1]-d); j++){
+
+					res_data[ i*shape[1]*shape[2] + j*shape[2] +d ] = costp[  i*shape[1]*shape[2] +(j+d)*shape[2] + d ] ;
+
+					//res_data[ d*shape[1]*shape[2] +i*shape[2] + j ] = costp[  d*shape[1]*shape[2] +i*shape[2] + (j+d) ] ;
+
+				}
+
+			}
+		}
+	}
+
+	return res;
+}
+
+// pre-computed cost values of pkrn and aml for right image.
+// its size = (a batch of W*H) * (d_range)*(feature length);
+// i.e., = cost_censusR_shape[0]*cost_censusR_shape[1]*8
+PyObject * get_pkrn_aml(
+    // without removing the pixels no ground truth, for right cost.
+		// so, here using a suffix '_Full' to demonstrate that meaning.
+		PyObject* cost_censusR_Full,// shape[0] = img_H*img_W, shape[1] = disp_range;
+		PyObject* cost_nccR_Full,
+		PyObject* cost_sobelR_Full,
+		PyObject* cost_sadR_Full
+		//PyObject* idx_pixel_w_gt,//pixels with ground truth disparity, array[0] = row index, array[1] = column index;
+		//PyObject* row_indices
+		){
+
+	  	PyArrayObject* censA = reinterpret_cast<PyArrayObject*>(cost_censusR_Full);
+	  	PyArrayObject* nccA = reinterpret_cast<PyArrayObject*>(cost_nccR_Full);
+		PyArrayObject* sobA = reinterpret_cast<PyArrayObject*>(cost_sobelR_Full);
+		PyArrayObject* sadA = reinterpret_cast<PyArrayObject*>(cost_sadR_Full);
+		//PyArrayObject* riA = reinterpret_cast<PyArrayObject*>(row_indices);
+		//PyArrayObject* idx_pixel_w_gtA = reinterpret_cast<PyArrayObject*>(idx_pixel_w_gt);
+
+		double * censp = reinterpret_cast<double*>(PyArray_DATA(censA));
+		double * nccp = reinterpret_cast<double*>(PyArray_DATA(nccA));
+		double * sobp = reinterpret_cast<double*>(PyArray_DATA(sobA));
+		double * sadp = reinterpret_cast<double*>(PyArray_DATA(sadA));
+		//int * rip = reinterpret_cast<int*>(PyArray_DATA(riA));
+		//int * idx_pixel_w_gt_p = reinterpret_cast<int*>(PyArray_DATA(idx_pixel_w_gtA));
+		//npy_intp *samples = PyArray_DIMS(riA);
+
+    const int costNum = 4; // i.e., census, ncc, sobel, and sad.
+    const int fea_len = 2*costNum; // 2: for pkrn and aml;
+	//(a batch of W*H) * (d_range)*(feature length);
+	npy_intp * shapecens = PyArray_DIMS(censA);
+    const unsigned long int N = shapecens[0]*shapecens[1];
+	const int maxd = shapecens[1];
+
+	npy_intp * featshape = new npy_intp[3];
+
+    featshape[0] = shapecens[0];
+    featshape[1] = shapecens[1];
+    featshape[2] = fea_len;
+
+
+	PyObject* pkrn_amlR_Full = PyArray_SimpleNew(3, featshape, NPY_FLOAT64);
+	double* features_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(pkrn_amlR_Full)));
+	std::fill_n(features_data, N*fea_len, 0);
+
+
+	#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for (unsigned long int i=0; i < shapecens[0]; i++){
+
+			const unsigned long int pos = i* shapecens[1]; // i.e., maxd
+			double min_ncc = RAND_MAX, min_cens = RAND_MAX,
+				   min_sob = RAND_MAX,min_sad = RAND_MAX,
+				   censdenom=0,nccdenom=0,
+				   sobdenom=0,saddenom=0,num = 0;
+
+			for(int k=0; k< maxd; k++){
+					if(censp[pos+k] < min_cens){
+						min_cens = censp[pos+k];
+					}
+					if(nccp[pos+k] < min_ncc){
+						min_ncc = nccp[pos+k];
+					}
+					if(sobp[pos+k] < min_sob){
+						min_sob = sobp[pos+k];
+					}
+					if(sadp[pos+k] < min_sad){
+						min_sad = sadp[pos+k];
+					}
+			}
+
+
+
+			for(int k=0; k<shapecens[1]; k++){
+					num = censp[pos+k]-min_cens;
+					censdenom += exp( -( num*num )/CENSUSSIGMA );
+					num =nccp[pos+k]-min_ncc;
+					nccdenom += exp( -( num*num )/NCCSIGMA );
+					num = sobp[pos+k]-min_sob;
+					sobdenom += exp( -( num*num )/SADSIGMA );
+					num = sadp[pos+k]-min_sad;
+					saddenom += exp( -( num*num )/SADSIGMA );
+			}
+
+
+			const long int tmp_i = i*shapecens[1]* fea_len;
+
+			for(int j=0; j< shapecens[1]; j++){
+				const long int s_i = tmp_i + j*fea_len;
+				//PKRN CENSUS
+				features_data[s_i] =  (min_cens == RAND_MAX)? 0.0 :( min_cens +.01 ) / (censp[pos+j]+.01);
+				//assert(  ( min_cens +.01 ) / (censp[pos+j]+.01) > 0);
+
+				//PKRN NCC
+				features_data[s_i+1]= (min_ncc == RAND_MAX)? 0.0 : ( min_ncc +1.01 ) / (nccp[pos+j]+1.01);
+				//assert(  ( min_ncc +1.01 ) / (nccp[pos+j]+1.01) > 0);
+
+				//PKRN SOB
+				features_data[s_i+2]= (min_sob == RAND_MAX)? 0.0 : ( min_sob +.01 ) / (sobp[pos+j]+.01);
+
+				//PKRN SAD
+				features_data[s_i+3]= (min_sad == RAND_MAX)? 0.0 :( min_sad +.01 ) / (sadp[pos+j]+.01);
+
+				//assert(  ( min_sad +1.01 ) / (sadp[pos+j]+1.01) > 0);
+
+				//AML CENSUS
+				double tmp = censp[pos+j] - min_cens;
+				features_data[s_i+4] = (min_cens == RAND_MAX)? 0.0 :exp( -((tmp*tmp) /CENSUSSIGMA )) /censdenom;
+				//AML NCC
+				tmp = nccp[pos+j] - min_ncc;
+				features_data[s_i+5] = (min_ncc == RAND_MAX)? 0.0 :exp( -((tmp*tmp) /NCCSIGMA )) /nccdenom;
+				//AML SOB
+				tmp = sobp[pos+j] - min_sob;
+				features_data[s_i+6] =(min_sob == RAND_MAX)? 0.0 : exp( -((tmp*tmp) /SADSIGMA )) /sobdenom;
+				//AML SAD
+				tmp = sadp[pos+j] - min_sad;
+				features_data[s_i+7] = (min_sad == RAND_MAX)? 0.0 : exp( -((tmp*tmp) /SADSIGMA )) /saddenom;
+			}
+
+		}
+	}
+
+	return pkrn_amlR_Full;
+}
+
+// added by CCJ.
+// - 1) to add more features to try to improve the disparity accuracy of RF and post-processing.
+// - 2) soft version of positive samplesi, i.e., ground truth disparity d, then pick onr out of {d, d+1, d-1}.
+// - 3) assuming those cost values are a batch of all the pixels with ground truth disparity,
+//      then we should keep some mapping from 2D (row, column) index to the 1-D sampling array.
+//      Also, due to removing the pixels with out ground truth, so this mapping is also necessary,
+//      to find out the correspondence LeftCost(x,y,d) == RightCost(x-d, y, d);
+
+PyObject* extract_training_features4_lrc(
+		const int & dispThred,
+		PyObject* pkrn_amlR_Full,
+
+		PyObject* idx_pixel_w_gt,//pixels with ground truth disparity, array[0] = row index, array[1] = column index;
+
+		PyObject* cost_census,// shape[0] = img_H*img_W, shape[1] = disp_range;
+		PyObject* cost_ncc,
+		PyObject* cost_sobel,
+		PyObject* cost_sad,
+
+		PyObject* gt,
+		PyObject* row_indices,
+		int imgW){
+
+
+	  srand (time(NULL));
+
+
+
+	PyArrayObject* censA = reinterpret_cast<PyArrayObject*>(cost_census);
+    PyArrayObject* nccA = reinterpret_cast<PyArrayObject*>(cost_ncc);
+    PyArrayObject* sobA = reinterpret_cast<PyArrayObject*>(cost_sobel);
+    PyArrayObject* sadA = reinterpret_cast<PyArrayObject*>(cost_sad);
+
+
+    PyArrayObject* gtA = reinterpret_cast<PyArrayObject*>(gt);
+    PyArrayObject* idx_pixel_w_gtA = reinterpret_cast<PyArrayObject*>(idx_pixel_w_gt);
+
+	PyArrayObject* pkrn_amlRA_Full = reinterpret_cast<PyArrayObject*>(pkrn_amlR_Full);
+
+	PyArrayObject* riA = reinterpret_cast<PyArrayObject*>(row_indices);
+
+		// 2-dim array is reinterpreted as 1-d array.
+    double * censp = reinterpret_cast<double*>(PyArray_DATA(censA));
+    double * nccp = reinterpret_cast<double*>(PyArray_DATA(nccA));
+    double * sobp = reinterpret_cast<double*>(PyArray_DATA(sobA));
+    double * sadp = reinterpret_cast<double*>(PyArray_DATA(sadA));
+
+    double * pkrn_aml_r = reinterpret_cast<double*>(PyArray_DATA(pkrn_amlRA_Full));
+
+
+    int * gtp = reinterpret_cast<int*>(PyArray_DATA(gtA));
+    int * rip = reinterpret_cast<int*>(PyArray_DATA(riA));
+    int * idx_pixel_w_gt_p = reinterpret_cast<int*>(PyArray_DATA(idx_pixel_w_gtA));
+
+
+    npy_intp *samples = PyArray_DIMS(riA);
+    npy_intp *shapecens = PyArray_DIMS(censA);
+
+    int maxd = shapecens[1];
+
+    npy_intp *featshape = new npy_intp[2];
+    featshape[0] = 3*samples[0]; featshape[1] = 4*5 + 1;
+	PyObject* features = PyArray_SimpleNew(2, featshape, NPY_FLOAT64);
+	double* features_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(features)));
+
+
+
+
+#pragma omp parallel num_threads(12)
+		{
+    #pragma omp for
+		for(long int s=0; s<samples[0]; s++){
+			const long int i = rip[s];
+
+
+			double min_ncc = RAND_MAX, min_cens = RAND_MAX,
+						 min_sob=RAND_MAX ,min_sad = RAND_MAX,
+						 censdenom=0,nccdenom=0, sobdenom=0,
+						 saddenom=0, num;
+			const long int pos = i* shapecens[1];
+
+			const int disp = gtp[i];
+			// keep the 2D (row, column) index in the image;
+			const int r_idx = idx_pixel_w_gt_p[2*i];
+			const int c_idx = idx_pixel_w_gt_p[2*i+1];
+
+
+
+
+//			if(disp <0 || disp >= maxd )
+//				continue;
+//
+//			int ofc = rand()%3 -1;
+//			if((disp+ofc) <0){
+//				ofc = 0;
+//			}
+//			else if((disp+ofc)>=maxd){
+//				ofc=0;
+//			}
+
+
+			for(int k=0; k< maxd; k++){
+					if(censp[pos+k] < min_cens){
+						min_cens = censp[pos+k];
+					}
+					if(nccp[pos+k] < min_ncc){
+						min_ncc = nccp[pos+k];
+					}
+					if(sobp[pos+k] < min_sob){
+						min_sob = sobp[pos+k];
+					}
+					if(sadp[pos+k] < min_sad){
+						min_sad = sadp[pos+k];
+					}
+
+			}
+
+
+			for(int k=0; k<maxd; k++){
+					num = censp[pos+k]-min_cens;
+					censdenom += exp( -( num*num )/CENSUSSIGMA );
+					num =nccp[pos+k]-min_ncc;
+					nccdenom += exp( -( num*num )/NCCSIGMA );
+					num = sobp[pos+k]-min_sob;
+					sobdenom += exp( -( num*num )/SADSIGMA );
+					num = sadp[pos+k]-min_sad;
+					saddenom += exp( -( num*num )/SADSIGMA );
+			}
+
+
+
+			const long int s_temp = s*3*featshape[1];
+			const long int s_temp1 = ((s*3)+1)*featshape[1];
+			const long int s_temp2 = ((s*3)+2)*featshape[1];
+
+			//cost census
+			features_data[s_temp] = censp[pos+ disp];
+			//cost ncc
+			features_data[s_temp+1] = nccp[pos+ disp];
+			//cost sobel
+			features_data[s_temp+2] = sobp[pos+ disp];
+			//cost sad
+			features_data[s_temp+3] = sadp[pos+ disp];
+
+			//PKRN CENSUS
+			features_data[s_temp+4] = (min_cens == RAND_MAX)? 0.0 : ( min_cens +.01 ) / (censp[pos+ disp ] +.01);
+			//assert(  ( min_cens +.01 ) / (censp[pos+ disp+ofc]+.01) > 0);
+			//PKRN NCC
+			features_data[s_temp+5] = (min_ncc == RAND_MAX)? 0.0 :( min_ncc +1.01 ) / (nccp[pos+ disp ]+1.01);
+			//assert( (( min_ncc +1.01 ) / (nccp[ disp+ofc *shapencc[1]+i]+1.01))>0);
+			//PKRN Sobel
+			features_data[s_temp+6] =(min_sob == RAND_MAX)? 0.0 : ( min_sob +.01 ) / (sobp[pos+ disp ]+.01);
+			//PKRN SAD
+			features_data[s_temp+7] =(min_sad == RAND_MAX)? 0.0 : ( min_sad +.01 ) / (sadp[pos+ disp ]+.01);
+			//assert( ( min_sad +.01 ) / (sadp[ disp+ofc *shapesad[1]+i]+.01)>0);
+
+			//AML CENSUS
+			double tmp_cost = censp[pos+ disp ] - min_cens;
+			double num0 = (min_cens == RAND_MAX)? 0.0 :exp( -((tmp_cost * tmp_cost) /CENSUSSIGMA ));
+			features_data[s_temp+8] = num0 /censdenom ;
+			//AML NCC
+			tmp_cost = nccp[pos+ disp ] - min_ncc;
+			double num1 = (min_ncc == RAND_MAX)? 0.0 :exp( -((tmp_cost * tmp_cost)/NCCSIGMA ));
+			features_data[s_temp+9] = num1 / nccdenom ;
+			//AML SOB
+			tmp_cost = sobp[pos+ disp ] - min_sob;
+			double num2 =(min_sob == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /SADSIGMA ));
+			features_data[s_temp+10] = num2 / sobdenom;
+			//AML SAD
+			tmp_cost = sadp[pos+ disp ] - min_sad;
+			double num3 =(min_sad == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /SADSIGMA ));
+			features_data[s_temp+11] = num3 / saddenom ;
+
+
+			// pkrn and aml from right image;
+			int tmp_d = disp;
+			const int tmp_idx = r_idx * imgW + c_idx;
+			const int fea_len = 8;
+
+			long int tmp_i_d_right = ((tmp_idx - tmp_d)*maxd + tmp_d)*fea_len;
+
+			//prkn_census
+			if (c_idx < tmp_d){
+				features_data[s_temp+12] = Invalid_R_PKRN;
+				//prkn_ncc
+				features_data[s_temp+13] = Invalid_R_PKRN;
+				//prkn_sobel
+				features_data[s_temp+14] = Invalid_R_PKRN;
+				//prkn_sad
+				features_data[s_temp+15] = Invalid_R_PKRN;
+				//aml_census
+				features_data[s_temp+16] = Invalid_R_AML;
+				//aml_ncc
+				features_data[s_temp+17] = Invalid_R_AML;
+				//aml_sobel
+				features_data[s_temp+18] = Invalid_R_AML;
+				//aml_sad
+				features_data[s_temp+19] = Invalid_R_AML;
+			}
+
+			else{
+
+				features_data[s_temp+12] = pkrn_aml_r[tmp_i_d_right];
+				//prkn_ncc
+				features_data[s_temp+13] = pkrn_aml_r[tmp_i_d_right+1];
+				//prkn_sobel
+				features_data[s_temp+14] = pkrn_aml_r[tmp_i_d_right+2];
+				//prkn_sad
+				features_data[s_temp+15] = pkrn_aml_r[tmp_i_d_right+3];
+				//aml_census
+				features_data[s_temp+16] = pkrn_aml_r[tmp_i_d_right+4];
+				//aml_ncc
+				features_data[s_temp+17] = pkrn_aml_r[tmp_i_d_right+5];
+				//aml_sobel
+				features_data[s_temp+18] = pkrn_aml_r[tmp_i_d_right+6];
+				//aml_sad
+				features_data[s_temp+19] = pkrn_aml_r[tmp_i_d_right+7];
+
+			}
+
+
+			//label
+			features_data[s_temp + 20] = 1;
+
+
+			bool low = true;
+			bool high = true;
+
+			if(disp- dispThred <=0 )
+				low = false;
+
+			if(disp+ dispThred >= maxd)
+				high = false;
+
+			int d1 = 0;
+			int d2 = 0;
+
+			if( low ){
+				d1 = rand()%(disp - dispThred);
+			}
+			else{
+				d1 = rand()%(maxd - (disp + dispThred+ 1)) + (disp + dispThred+1);
+			}
+			if( high){
+				d2 = rand()%(maxd - (disp + dispThred +1)) + (disp + dispThred+1);
+			}
+			else{
+				d2 = rand()%(disp - dispThred);
+			}
+
+
+			//cost census
+			features_data[s_temp1] = censp[pos+d1];
+			//cost ncc
+			features_data[s_temp1+1] = nccp[pos+d1];
+			//cost sad
+			features_data[s_temp1+2] = sobp[pos+d1];
+			//cost sad
+			features_data[s_temp1+3] = sadp[pos+d1];
+
+			//PKRN CENSUS
+			features_data[s_temp1+4] = (min_cens == RAND_MAX)? 0.0 :( min_cens +.01 ) / (censp[pos+d1]+.01);
+			//assert(  ( min_cens +.01 ) / (censp[pos+d1]+.01) > 0);
+			//PKRN NCC
+			features_data[s_temp1+5] = (min_ncc == RAND_MAX)? 0.0 :( min_ncc +1.01 ) / (nccp[pos+d1]+1.01);
+			//assert( ( min_ncc +1.01 ) / (nccp[d1*shapencc[1]+i]+1.01)>0);
+			//PKRN SAD
+			features_data[s_temp1+6] = (min_sob == RAND_MAX)? 0.0 : ( min_sob +.01 ) / (sobp[pos+d1]+.01);
+			//PKRN SAD
+			features_data[s_temp1+7] = (min_sad == RAND_MAX)? 0.0 : ( min_sad +.01 ) / (sadp[pos+d1]+.01);
+			//assert( ( min_sad +.01 ) / (sadp[d1*shapesad[1]+i]+.01)>0);
+
+
+			//AML CENSUS
+			tmp_cost = censp[pos+ d1 ] - min_cens;
+			features_data[s_temp1+8] = (min_cens == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /CENSUSSIGMA )) /censdenom ;
+			//AML NCC
+			tmp_cost = nccp[pos+ d1 ] - min_ncc;
+			features_data[s_temp1+9] = (min_ncc == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost)/NCCSIGMA ))/nccdenom ;
+			//AML SOB
+			tmp_cost = sobp[pos+ d1] - min_sob;
+			features_data[s_temp1+10] = (min_sob == RAND_MAX)? 0.0 :  exp( -((tmp_cost * tmp_cost) /SADSIGMA )) /sobdenom ;
+			//AML SAD
+			tmp_cost = sadp[pos+ d1] - min_sad;
+			features_data[s_temp1+11] = (min_sad == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /SADSIGMA )) /saddenom ;
+
+
+			// pkrn and aml from right image;
+			tmp_d = d1;
+			// make sure the index of cost_shape[0] is continuous, that is, with out delting any pixel of the image.
+			tmp_i_d_right = ((tmp_idx - tmp_d)*maxd + tmp_d)*fea_len;
+			//assert(	censp[pos+ tmp_d] == censRp[tmp_i_d_right/fea_len]);
+
+			if (c_idx < tmp_d){
+				//pkrn_census
+				features_data[s_temp1+12] = Invalid_R_PKRN;
+				//prkn_ncc
+				features_data[s_temp1+13] = Invalid_R_PKRN;
+				//prkn_sobel
+				features_data[s_temp1+14] = Invalid_R_PKRN;
+				//prkn_sad
+				features_data[s_temp1+15] = Invalid_R_PKRN;
+				//aml_census
+				features_data[s_temp1+16] = Invalid_R_AML;
+				//aml_ncc
+				features_data[s_temp1+17] = Invalid_R_AML;
+				//aml_sobel
+				features_data[s_temp1+18] = Invalid_R_AML;
+				//aml_sad
+				features_data[s_temp1+19] = Invalid_R_AML;
+			}
+			else{
+				//pkrn_censun
+				features_data[s_temp1+12] = pkrn_aml_r[tmp_i_d_right];
+				//prkn_ncc
+				features_data[s_temp1+13] = pkrn_aml_r[tmp_i_d_right+1];
+				//prkn_sobel
+				features_data[s_temp1+14] = pkrn_aml_r[tmp_i_d_right+2];
+				//prkn_sad
+				features_data[s_temp1+15] = pkrn_aml_r[tmp_i_d_right+3];
+				//aml_census
+				features_data[s_temp1+16] = pkrn_aml_r[tmp_i_d_right+4];
+				//aml_ncc
+				features_data[s_temp1+17] = pkrn_aml_r[tmp_i_d_right+5];
+				//aml_sobel
+				features_data[s_temp1+18] = pkrn_aml_r[tmp_i_d_right+6];
+				//aml_sad
+				features_data[s_temp1+19] = pkrn_aml_r[tmp_i_d_right+7];
+			}
+
+
+			//label
+			features_data[s_temp1+20] = 0;
+
+
+			//cost census
+			features_data[s_temp2] = censp[pos+d2];
+			//cost ncc
+			features_data[s_temp2+1] = nccp[pos+d2];
+			//cost sad
+			features_data[s_temp2+2] = sobp[pos+d2];
+			//cost sad
+			features_data[s_temp2+3] = sadp[pos+d2];
+
+			//PKRN CENSUS
+			features_data[s_temp2+4] = (min_cens == RAND_MAX)? 0.0 :( min_cens +.01 ) / (censp[pos+d2]+.01);
+			//assert(  ( min_cens +.01 ) / (censp[pos+d2]+.01) > 0);
+			//PKRN NCC
+			features_data[s_temp2+5] = (min_ncc == RAND_MAX)? 0.0 :( min_ncc +1.01 ) / (nccp[pos+d2]+1.01);
+			//assert( ( min_ncc +1.01 ) / (nccp[d2*shapencc[1]+i]+1.01)>0);
+			//PKRN SOB
+			features_data[s_temp2+6] =(min_sob == RAND_MAX)? 0.0 : ( min_sob +.01 ) / (sobp[pos+d2]+.01);
+			//PKRN SAD
+			features_data[s_temp2+7] =(min_sad == RAND_MAX)? 0.0 : ( min_sad +.01 ) / (sadp[pos+d2]+.01);
+			//assert( ( min_sad +.01 ) / (sadp[d2*shapesad[1]+i]+.01)>0);
+
+			//AML CENSUS
+			tmp_cost = censp[pos+ d2 ] - min_cens;
+			features_data[s_temp2+8] = (min_cens == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /CENSUSSIGMA )) /censdenom ;
+			//AML NCC
+			tmp_cost = nccp[pos+ d2 ] - min_ncc;
+			features_data[s_temp2+9] = (min_ncc == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost)/NCCSIGMA ))/nccdenom ;
+			//AML SOB
+			tmp_cost = sobp[pos+ d2] - min_sob;
+			features_data[s_temp2+10] = (min_sob == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /SADSIGMA )) /sobdenom ;
+			//AML SAD
+			tmp_cost = sadp[pos+ d2] - min_sad;
+			features_data[s_temp2+11] = (min_sad == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /SADSIGMA )) /saddenom ;
+
+			// pkrn and aml from right image;
+			tmp_d = d2;
+			// make sure the index of cost_shape[0] is continuous, that is, with out delting any pixel of the image.
+			tmp_i_d_right = ((tmp_idx - tmp_d)*maxd + tmp_d)*fea_len;
+			//assert(	censp[pos+ tmp_d] == censRp[tmp_i_d_right/fea_len]);
+
+
+			if (c_idx < tmp_d){
+				features_data[s_temp2+12] = Invalid_R_PKRN;
+				//prkn_ncc
+				features_data[s_temp2+13] = Invalid_R_PKRN;
+				//prkn_sobel
+				features_data[s_temp2+14] = Invalid_R_PKRN;
+				//prkn_sad
+				features_data[s_temp2+15] = Invalid_R_PKRN;
+				//aml_census
+				features_data[s_temp2+16] = Invalid_R_AML;
+				//aml_ncc
+				features_data[s_temp2+17] = Invalid_R_AML;
+				//aml_sobel
+				features_data[s_temp2+18] = Invalid_R_AML;
+				//aml_sad
+				features_data[s_temp2+19] = Invalid_R_AML;
+			}
+			else{
+				features_data[s_temp2+12] = pkrn_aml_r[tmp_i_d_right];
+				//prkn_ncc
+				features_data[s_temp2+13] = pkrn_aml_r[tmp_i_d_right+1];
+				//prkn_sobel
+				features_data[s_temp2+14] = pkrn_aml_r[tmp_i_d_right+2];
+				//prkn_sad
+				features_data[s_temp2+15] = pkrn_aml_r[tmp_i_d_right+3];
+				//aml_census
+				features_data[s_temp2+16] = pkrn_aml_r[tmp_i_d_right+4];
+				//aml_ncc
+				features_data[s_temp2+17] = pkrn_aml_r[tmp_i_d_right+5];
+				//aml_sobel
+				features_data[s_temp2+18] = pkrn_aml_r[tmp_i_d_right+6];
+				//aml_sad
+				features_data[s_temp2+19] = pkrn_aml_r[tmp_i_d_right+7];
+			}
+
+
+
+			//label
+			features_data[s_temp2+20] = 0;
+		}/*end of samples*/
+	}/*end of omp*/
+	return features;
+}
+
+
+
+// do not delete the pixel without gournd truth disparity,
+// that means all the pixels will have a feature generated by cost values,
+// which is different from the feature extraction for Random Forest training.
+PyObject* extract_testing_features4_lrc(
+		const int & r_idx_base,
+
+		PyObject* pkrn_amlR,
+
+		PyObject* r_c_idx_pixel,//2d index of pixels in the testing image, since the cost array is reshaped from 3D to 1D;
+
+		PyObject* cost_census,
+		PyObject* cost_ncc,
+		PyObject* cost_sob,
+		PyObject* cost_sad,
+		int imgW){
+
+    	PyArrayObject* censA = reinterpret_cast<PyArrayObject*>(cost_census);
+    	PyArrayObject* nccA = reinterpret_cast<PyArrayObject*>(cost_ncc);
+    	PyArrayObject* sobA = reinterpret_cast<PyArrayObject*>(cost_sob);
+    	PyArrayObject* sadA = reinterpret_cast<PyArrayObject*>(cost_sad);
+		PyArrayObject* pkrn_amlRA_Full = reinterpret_cast<PyArrayObject*>(pkrn_amlR);
+
+
+		PyArrayObject* r_c_idx_pixelA = reinterpret_cast<PyArrayObject*>(r_c_idx_pixel);
+
+
+		double * censp = reinterpret_cast<double*>(PyArray_DATA(censA));
+		double * nccp = reinterpret_cast<double*>(PyArray_DATA(nccA));
+		double * sobp = reinterpret_cast<double*>(PyArray_DATA(sobA));
+		double * sadp = reinterpret_cast<double*>(PyArray_DATA(sadA));
+		double * pkrn_aml_r = reinterpret_cast<double*>(PyArray_DATA(pkrn_amlRA_Full));
+
+
+		int * r_c_idx_pixel_p = reinterpret_cast<int*>(PyArray_DATA(r_c_idx_pixelA));
+
+		npy_intp * shapecens = PyArray_DIMS(censA);
+
+		npy_intp *featshape = new npy_intp[2];
+		featshape[0] = shapecens[0]*shapecens[1];
+		featshape[1] = 4*5;
+
+		PyObject* features = PyArray_SimpleNew(2, featshape, NPY_FLOAT64);
+
+		double* features_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(features)));
+
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for (unsigned long int i= 0; i <shapecens[0]; i++ ){
+			const unsigned long int pos = i* shapecens[1];
+			double min_ncc = RAND_MAX, min_cens = RAND_MAX,
+				     min_sob = RAND_MAX, min_sad = RAND_MAX,
+						 censdenom=0,nccdenom=0,
+						 sobdenom=0,saddenom=0,
+						 num = 0;
+
+			for(int k=0; k< shapecens[1]; k++){
+					if(censp[pos+k] < min_cens){
+						min_cens = censp[pos+k];
+					}
+					if(nccp[pos+k] < min_ncc){
+						min_ncc = nccp[pos+k];
+					}
+					if(sobp[pos+k] < min_sob){
+						min_sob = sobp[pos+k];
+					}
+					if(sadp[pos+k] < min_sad){
+						min_sad = sadp[pos+k];
+					}
+			}
+
+
+			for(int k=0; k<shapecens[1]; k++){
+					num = censp[pos+k]-min_cens;
+					censdenom += exp( -( num*num )/CENSUSSIGMA );
+					num =nccp[pos+k]-min_ncc;
+					nccdenom += exp( -( num*num )/NCCSIGMA );
+					num = sobp[pos+k]-min_sob;
+					sobdenom += exp( -( num*num )/SADSIGMA );
+					num = sadp[pos+k]-min_sad;
+					saddenom += exp( -( num*num )/SADSIGMA );
+			}
+
+
+			const int r_idx = r_c_idx_pixel_p[2*i];
+
+			const int c_idx = r_c_idx_pixel_p[2*i+1];
+
+			// ***************************
+			// *** what is r_idx_base? ***
+			// ** due to processing a batch of cost values.
+			// instead of the whole image (i.e., imgW*imgH*disp_range);
+			// so the first row passed into this function is not the real first row in the image.
+			// if we need the 'real' row index in the image, so we should keep that starting row value.
+			// ***************************
+			// const int tmp_idx = r_idx*imgW + c_idx;
+			const int tmp_idx = (r_idx-r_idx_base)*imgW + c_idx;
+
+
+			for(int j=0; j< shapecens[1]; j++){
+				//Census cost
+				const long int s_i = i*shapecens[1]*featshape[1] + j*featshape[1];
+				features_data[ s_i  ] = censp[pos+j];
+				//Ncc cost
+				features_data[s_i +1] = nccp[pos+j];
+				//Sad cost
+				features_data[s_i +2] = sobp[pos+j];
+				//Sad cost
+				features_data[s_i +3] = sadp[pos+j];
+
+				//PKRN CENSUS
+				features_data[s_i +4] = (min_cens == RAND_MAX)? 0.0 :( min_cens +.01 ) / (censp[pos+j]+.01);
+				//assert(  ( min_cens +.01 ) / (censp[pos+j]+.01) > 0);
+				//PKRN NCC
+				features_data[s_i +5] = (min_ncc == RAND_MAX)? 0.0 :( min_ncc +1.01 ) / (nccp[pos+j]+1.01);
+				//assert(  ( min_ncc +1.01 ) / (nccp[pos+j]+1.01) > 0);
+				//PKRN SAD
+				features_data[s_i +6] = (min_sob == RAND_MAX)? 0.0 : ( min_sob +.01 ) / (sobp[pos+j]+.01);
+				//PKRN SAD
+				features_data[s_i +7] = (min_sad == RAND_MAX)? 0.0 : ( min_sad +.01 ) / (sadp[pos+j]+.01);
+				//assert(  ( min_sad +1.01 ) / (sadp[pos+j]+1.01) > 0);
+
+				//AML CENSUS
+				double tmp_cost = censp[pos+ j] - min_cens;
+				features_data[s_i+8] = (min_cens == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /CENSUSSIGMA )) /censdenom ;
+				//AML NCC
+				tmp_cost = nccp[pos+j] - min_ncc;
+				features_data[s_i+9] = (min_ncc == RAND_MAX)? 0.0 :  exp( -((tmp_cost * tmp_cost)/NCCSIGMA ))/nccdenom ;
+				//AML SOB
+				tmp_cost = sobp[pos+j] - min_sob;
+				features_data[s_i+10] = (min_sob == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /SADSIGMA )) /sobdenom ;
+				//AML SAD
+				tmp_cost = sadp[pos+j] - min_sad;
+				features_data[s_i+11] = (min_sad == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /SADSIGMA )) /saddenom ;
+
+
+				// pkrn and aml from right image;
+
+				const int fea_len = 8;
+				const int tmp_d = j;
+				// make sure the index of cost_shape[0] is continuous, that is, without delting any pixel of the image.
+
+				long int tmp_i_d_right = ((tmp_idx -tmp_d)*shapecens[1]+tmp_d)*fea_len;
+				//long int tmp_i_d_right = ((r_idx*imgW+ (c_idx-tmp_d))*shapecens[1]+tmp_d)*fea_len;
+
+				//prkn_census
+				if (c_idx < tmp_d){
+					features_data[s_i+12] = Invalid_R_PKRN;
+					//prkn_ncc
+					features_data[s_i+13] = Invalid_R_PKRN;
+					//prkn_sobel
+					features_data[s_i+14] = Invalid_R_PKRN;
+					//prkn_sad
+					features_data[s_i+15] = Invalid_R_PKRN;
+					//aml_census
+					features_data[s_i+16] = Invalid_R_AML;
+					//aml_ncc
+					features_data[s_i+17] = Invalid_R_AML;
+					//aml_sobel
+					features_data[s_i+18] = Invalid_R_AML;
+					//aml_sad
+					features_data[s_i+19] = Invalid_R_AML;
+				}
+
+				else{
+
+					features_data[s_i+12] = pkrn_aml_r[tmp_i_d_right];
+
+					//prkn_ncc
+					features_data[s_i+13] = pkrn_aml_r[tmp_i_d_right+1];
+					//prkn_sobel
+					features_data[s_i+14] = pkrn_aml_r[tmp_i_d_right+2];
+					//prkn_sad
+					features_data[s_i+15] = pkrn_aml_r[tmp_i_d_right+3];
+					//aml_census
+					features_data[s_i+16] = pkrn_aml_r[tmp_i_d_right+4];
+					//aml_ncc
+					features_data[s_i+17] = pkrn_aml_r[tmp_i_d_right+5];
+					//aml_sobel
+					features_data[s_i+18] = pkrn_aml_r[tmp_i_d_right+6];
+					//aml_sad
+					features_data[s_i+19] = pkrn_aml_r[tmp_i_d_right+7];
+				}
+
+
+			}/*end of d*/
+
+		}/*end of each sample*/
+
+	}/*end of omp*/
+
+	//cout << "Finished testing !!!!!!!!!!\n";
+	return features;
+}
+
+
+PyObject* generate_d_indices(
+		PyObject* gt,
+		int maxd,
+		int dispThresh
+		){
+	PyArrayObject* gtA = reinterpret_cast<PyArrayObject*>(gt);
+	int * gtp = reinterpret_cast<int*>(PyArray_DATA(gtA));
+
+	npy_intp *samples = PyArray_DIMS(gtA);
+	npy_intp *sshape = new npy_intp[2];
+	sshape[0] = samples[0];sshape[1]=3;
+
+	PyObject* rs= PyArray_SimpleNew(2, sshape, NPY_INT32);
+	int* rsd = static_cast<int*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(rs)));
+	std::fill_n(rsd, sshape[0]*sshape[1], 0);
+	std::cout << samples[0] << std::endl;
+
+#pragma omp parallel num_threads(12)
+		{
+    #pragma omp for
+		for(long int s=0; s<samples[0]; s++){
+			if(gtp[s] > maxd || gtp[s]<0)
+				continue;
+
+
+
+			rsd[3*s] = gtp[s];
+			bool low = true;
+			bool high = true;
+
+			if(gtp[s]- dispThresh <=0 )
+				low = false;
+
+			if(gtp[s]+ dispThresh >= maxd)
+				high = false;
+			int d1 = 0;
+			int d2 = 0;
+
+			if( low ){
+				d1 = rand()%(gtp[s] - dispThresh);
+			}
+			else{
+				d1 = rand()%(maxd - (gtp[s] + dispThresh+ 1)) + (gtp[s] + dispThresh+1);
+			}
+			if( high){
+				d2 = rand()%(maxd - (gtp[s] + dispThresh +1)) + (gtp[s] + dispThresh+1);
+			}
+			else{
+				d2 = rand()%(gtp[s] - dispThresh);
+			}
+
+			rsd[3*s+1] = d1;
+			rsd[3*s+2] = d2;
+
+		}
+	}
+
+	return rs;
+}
+
+PyObject* get_samples(
+		PyObject* vol,
+		PyObject* r_samp
+		){
+	PyArrayObject* volA = reinterpret_cast<PyArrayObject*>(vol);
+	double * volp = reinterpret_cast<double*>(PyArray_DATA(volA));
+
+	PyArrayObject* r_sampA = reinterpret_cast<PyArrayObject*>(r_samp);
+	int * r_sampp = reinterpret_cast<int*>(PyArray_DATA(r_sampA));
+
+
+	npy_intp *vol_shape = PyArray_DIMS(volA);
+	npy_intp *samples = PyArray_DIMS(r_sampA);
+	npy_intp *sshape = new npy_intp[1];
+	sshape[0] = samples[0]*samples[1];
+
+	PyObject* res= PyArray_SimpleNew(1, sshape, NPY_FLOAT64);
+	double* resd = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
+
+#pragma omp parallel num_threads(12)
+		{
+    #pragma omp for
+		for(long int s=0; s<samples[0]; s++){
+
+
+			resd[3*s] = volp[s*vol_shape[1]+r_sampp[3*s]];
+
+			resd[3*s+1] =volp[s*vol_shape[1]+r_sampp[3*s+1]];
+			resd[3*s+2] =volp[s*vol_shape[1]+r_sampp[3*s+2]];
+
+		}
+	}
+
+	return res;
+}
+
+PyObject* extract_pkrn(
+		PyObject* vol,
+		PyObject* r_samp,
+		double e
+		){
+
+	PyArrayObject* volA = reinterpret_cast<PyArrayObject*>(vol);
+	double * volp = reinterpret_cast<double*>(PyArray_DATA(volA));
+
+	PyArrayObject* r_sampA = reinterpret_cast<PyArrayObject*>(r_samp);
+	int * r_sampp = reinterpret_cast<int*>(PyArray_DATA(r_sampA));
+
+	npy_intp *vol_shape = PyArray_DIMS(volA);
+	npy_intp *samples = PyArray_DIMS(r_sampA);
+	npy_intp *sshape = new npy_intp[1];
+	sshape[0] = samples[0]*samples[1];
+
+	PyObject* res= PyArray_SimpleNew(1, sshape, NPY_FLOAT64);
+	double* resd = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for (unsigned long int i= 0; i <vol_shape[0]; i++ ){
+			const unsigned long int pos = i* vol_shape[1];
+			double min_cost = RAND_MAX;
+
+			for(int k=0; k< vol_shape[1]; k++){
+					if(volp[pos+k] < min_cost){
+						min_cost = volp[pos+k];
+					}
+
+			}
+
+
+			resd[3*i] = (min_cost == RAND_MAX)? 0.0 :( min_cost +e ) / (volp[pos+r_sampp[3*i]]+e);
+			resd[3*i+1] = (min_cost == RAND_MAX)? 0.0 :( min_cost +e ) / (volp[pos+r_sampp[3*i+1]]+e);
+			resd[3*i+2] = (min_cost == RAND_MAX)? 0.0 :( min_cost +e ) / (volp[pos+r_sampp[3*i+2]]+e);
+
+
+
+		}/*end of each sample*/
+
+	}/*end of omp*/
+
+	//cout << "Finished testing !!!!!!!!!!\n";
+	return res;
+}
+
+
+PyObject* extract_pkrn_test(
+		PyObject* vol,
+		double e
+		){
+
+	PyArrayObject* volA = reinterpret_cast<PyArrayObject*>(vol);
+	double * volp = reinterpret_cast<double*>(PyArray_DATA(volA));
+
+	npy_intp *vol_shape = PyArray_DIMS(volA);
+
+	PyObject* res= PyArray_SimpleNew(2, vol_shape, NPY_FLOAT64);
+	double* resd = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for (unsigned long int i= 0; i <vol_shape[0]; i++ ){
+			const unsigned long int pos = i* vol_shape[1];
+			double min_cost = RAND_MAX;
+
+			for(int k=0; k< vol_shape[1]; k++){
+					if(volp[pos+k] < min_cost){
+						min_cost = volp[pos+k];
+					}
+
+			}
+
+
+			for(int j=0; j< vol_shape[1]; j++){
+				resd[pos+j] = (min_cost == RAND_MAX)? 0.0 :( min_cost +e ) / (volp[pos+j]+e);
+
+
+			}
+
+		}/*end of each sample*/
+
+	}/*end of omp*/
+
+	//cout << "Finished testing !!!!!!!!!!\n";
+	return res;
+}
+
+
+PyObject* extract_aml(
+		PyObject* vol,
+		PyObject* r_samp,
+		double sigma
+		){
+
+	PyArrayObject* volA = reinterpret_cast<PyArrayObject*>(vol);
+	double * volp = reinterpret_cast<double*>(PyArray_DATA(volA));
+
+	PyArrayObject* r_sampA = reinterpret_cast<PyArrayObject*>(r_samp);
+	int * r_sampp = reinterpret_cast<int*>(PyArray_DATA(r_sampA));
+
+	npy_intp *vol_shape = PyArray_DIMS(volA);
+	npy_intp *samples = PyArray_DIMS(r_sampA);
+	npy_intp *sshape = new npy_intp[1];
+	sshape[0] = samples[0]*samples[1];
+
+	PyObject* res= PyArray_SimpleNew(1, sshape, NPY_FLOAT64);
+	double* resd = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for (unsigned long int i= 0; i <vol_shape[0]; i++ ){
+			const unsigned long int pos = i* vol_shape[1];
+			double min_cost = RAND_MAX,denom=0,num = 0;
+
+			for(int k=0; k< vol_shape[1]; k++){
+					if(volp[pos+k] < min_cost){
+						min_cost = volp[pos+k];
+					}
+
+			}
+
+			for(int k=0; k<vol_shape[1]; k++){
+					num = volp[pos+k]-min_cost;
+					denom += exp( -( num*num )/sigma );
+			}
+
+			double tmp_cost = volp[pos+r_sampp[3*i]] - min_cost;
+			resd[3*i]=(min_cost == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /sigma )) /denom ;
+			tmp_cost = volp[pos+r_sampp[3*i+1]] - min_cost;
+			resd[3*i+1] = (min_cost == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /sigma )) /denom ;
+			tmp_cost = volp[pos+r_sampp[3*i+2]] - min_cost;
+			resd[3*i+2] = (min_cost == RAND_MAX)? 0.0 : exp( -((tmp_cost * tmp_cost) /sigma )) /denom ;
+
+
+
+		}/*end of each sample*/
+
+	}/*end of omp*/
+
+	//cout << "Finished testing !!!!!!!!!!\n";
+	return res;
+}
+
+PyObject* get_left_cost_from_right(PyObject* cost ){
+
+
+    PyArrayObject* costA = reinterpret_cast<PyArrayObject*>(cost);
+    double * costp = reinterpret_cast<double*>(PyArray_DATA(costA));
+    npy_intp *shape = PyArray_DIMS(costA);
+
+    npy_intp *res_shape = new npy_intp[3];
+    res_shape[0] = shape[0]; res_shape[1] = shape[1], res_shape[2] = shape[2] ;
+
+
+	PyObject* res = PyArray_SimpleNew(3, res_shape, NPY_FLOAT64);
+
+	double* res_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
+	int fill_size = shape[0]*shape[1]*shape[2];
+	std::fill_n(res_data,fill_size, costp[0]);
+
+#pragma omp parallel num_threads(12)
+	{
+		#pragma omp for
+		for(int d=0; d<shape[2]; d++){
+			for(int i=0; i<shape[0]; i++){
+
+				for(int j=0; j<(shape[1]-d); j++){
+
+					res_data[ i*shape[1]*shape[2] + j*shape[2] +d ] = costp[  i*shape[1]*shape[2] +(j+d)*shape[2] + d ] ;
+
+					//res_data[ d*shape[1]*shape[2] +i*shape[2] + j ] = costp[  d*shape[1]*shape[2] +i*shape[2] + (j+d) ] ;
+
+				}
+
+			}
+		}
+	}
+
+	return res;
+}
+
+
+BOOST_PYTHON_MODULE(libfeatextract) {
+
+	omp_set_num_threads(12);
+    numeric::array::set_module_and_type("numpy", "ndarray");
+
+
+    def("extract_features",extract_features);
+    def("extract_features",extract_features4);
+    def("extract_features_soft",extract_features_soft);
+    def("extract_testing_features",extract_testing_features);
+    def("extract_testing_features",extract_testing_features4);
+    def("extract_testing_features_soft",extract_testing_features_soft);
+    def("get_cost", get_cost);
+    def("get_right_cost", get_right_cost);
+    def("swap_axes", swap_axes);
+    def("swap_axes_back",swap_axes_back);
+    def("get_pkrn_aml",get_pkrn_aml);
+    def("extract_training_lrfeatures", extract_training_features4_lrc);
+    def("extract_testing_lrfeatures",  extract_testing_features4_lrc);
+    def("generate_d_indices",  generate_d_indices);
+    def("get_samples",  get_samples);
+    def("extract_pkrn",  extract_pkrn);
+    def("extract_pkrn",  extract_pkrn_test);
+    def("extract_aml",extract_aml);
+    import_array();
+}

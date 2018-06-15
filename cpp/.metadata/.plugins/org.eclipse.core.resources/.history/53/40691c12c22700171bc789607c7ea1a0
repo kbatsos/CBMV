@@ -1,0 +1,345 @@
+#include <iostream>
+#include <boost/python.hpp>
+#include "boost/python/extract.hpp"
+#include "boost/python/numeric.hpp"
+#include <numpy/ndarrayobject.h>
+#include <algorithm>
+#include <vector>
+#include <stdint.h>
+#include <assert.h>
+
+
+using namespace std;
+using namespace boost::python;
+typedef uint8_t uint8;
+typedef int16_t int16;
+
+
+
+PyObject* nccNister(PyObject* left, PyObject *right, int ndisp, int wsize){
+    // Cast to pointer to Python Array object
+    PyArrayObject* leftA = reinterpret_cast<PyArrayObject*>(left);
+    PyArrayObject* rightA = reinterpret_cast<PyArrayObject*>(right);
+
+    //Get the pointer to the data
+    uint8 * leftp = reinterpret_cast<uint8*>(PyArray_DATA(leftA));
+    uint8 * rightp = reinterpret_cast<uint8*>(PyArray_DATA(rightA));
+
+    npy_intp *shape = PyArray_DIMS(leftA);
+    npy_intp *costshape = new npy_intp[3];
+    costshape[1] = shape[0]; costshape[2] = shape[1]; costshape[0] = ndisp;
+
+
+    PyObject* cost = PyArray_SimpleNew(3, costshape, NPY_FLOAT32);
+
+    float* res_data = static_cast<float*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(cost)));
+
+    std::fill_n(res_data,shape[0]*shape[1]*ndisp,-1);
+    int end;
+    const int wc = wsize/2;
+    const int sqwin = wsize*wsize;
+    const int intgrrows = shape[0]+1;
+    const int intgrcols = shape[1] +1;
+
+    unsigned int * lintegral = (unsigned int *)calloc(intgrrows*intgrcols,sizeof(unsigned int));
+    unsigned int * rintegral = (unsigned int *)calloc(intgrrows*intgrcols,sizeof(unsigned int));
+    unsigned long long * sqlintegral = (unsigned long long *)calloc(intgrrows*intgrcols,sizeof(unsigned long long));
+    unsigned long long * sqrintegral = (unsigned long long *)calloc(intgrrows*intgrcols,sizeof(unsigned long long));
+
+    for(int i=0; i<shape[0]; i++){
+    	const int row = i*shape[1];
+    	const int introw = (i+1)*intgrcols;
+    	for (int j=0; j<shape[1]; j++){
+    		const int intcol = j+1;
+			lintegral[introw+intcol] = leftp[row+j];
+			sqlintegral[introw+intcol] = leftp[row+j]*leftp[row+j];
+			rintegral[introw+intcol] = rightp[row+j];
+			sqrintegral[introw+intcol] =  rightp[row+j]* rightp[row+j];
+    	}
+    }
+
+
+
+
+    for (int i=1; i< intgrrows; i++){
+    	const int row = i*intgrcols;
+    	const int prev_row = (i-1)*intgrcols;
+    	for(int j=0; j<intgrcols;j++){
+    		lintegral[row+j] += lintegral[prev_row+j];
+    		rintegral[row+j] += rintegral[prev_row+j];
+    		sqlintegral[row+j] += sqlintegral[prev_row+j];
+    		sqrintegral[row+j] += sqrintegral[prev_row+j];
+    	}
+    }
+
+
+    for(int i=0; i<intgrrows; i++){
+    	const int row =  i*intgrcols;
+    	for(int j=1; j<intgrcols; j++){
+    		const int prev_col = j-1;
+    		lintegral[row+j] += lintegral[row+prev_col];
+    		rintegral[row+j] += rintegral[row+prev_col];
+    		sqlintegral[row+j] += sqlintegral[row+prev_col];
+    		sqrintegral[row+j] += sqrintegral[row+prev_col];
+    	}
+    }
+
+
+    unsigned int* Al = (unsigned int *)calloc(shape[0]*shape[1],sizeof(unsigned int));
+    unsigned int* Ar = (unsigned int *)calloc(shape[0]*shape[1],sizeof(unsigned int));
+    double* Cl = (double *)calloc(shape[0]*shape[1],sizeof(double));
+    double* Cr = (double *)calloc(shape[0]*shape[1],sizeof(double));
+
+    for (int i=0; i< shape[0]-wsize;i++){
+    	const int row = (i+wc)*shape[1];
+    	const int t_row = i*intgrcols;
+    	const int b_row = (i+wsize)*intgrcols;
+    	for(int j=0; j< shape[1]-wsize; j++){
+    		const int col = j+wc;
+    		Al[row+col] = lintegral[b_row + j+wsize]+ lintegral[t_row + j]  - lintegral[b_row + j] - lintegral[t_row + j+wsize];
+    		Ar[row+col] = rintegral[b_row + j+wsize]+ rintegral[t_row + j] 	- rintegral[b_row + j] - rintegral[t_row + j+wsize];
+    		unsigned long long Bl = sqlintegral[b_row + j+wsize] + sqlintegral[t_row + j] - sqlintegral[b_row + j] - sqlintegral[t_row + j+wsize];
+    		unsigned long long Br = sqrintegral[b_row + j+wsize] + sqrintegral[t_row + j] - sqrintegral[b_row + j] - sqrintegral[t_row + j+wsize];
+
+
+    		Cl[ (i+wc)*shape[1]+(j+wc) ] = 1/(sqrt(sqwin*Bl - (double)( Al[row+col] )*( Al[row+col] ) ));
+    		Cr[ (i+wc)*shape[1]+(j+wc) ] = 1/(sqrt(sqwin*Br - (double)( Ar[row+col] )*( Ar[row+col]) ));
+    	}
+    }
+
+
+
+
+    double * dslice = (double*)calloc(intgrrows*intgrcols,sizeof(double));
+
+    for (int d=0; d<ndisp; d++ ){
+    	const int d_row = d*shape[0]*shape[1];
+    	std::fill_n(dslice,intgrrows*intgrcols,0);
+		for(int i=0; i<shape[0]; i++){
+			const int row = i*shape[1];
+			const int intgrrow = (i+1)*intgrcols;
+			for(int j=d; j<shape[1]; j++){
+				dslice[intgrrow + j+1] = leftp[row+j]*rightp[row+j-d];
+			}
+		}
+
+		for(int i=1; i<intgrrows; i++ ){
+			const int row = i*intgrcols;
+			const int prev_row = (i-1)*intgrcols;
+			for(int j=d; j<intgrcols; j++){
+				dslice[row + j] += dslice[prev_row + j];
+			}
+
+		}
+
+		for(int i=0; i<intgrrows; i++){
+			const int row = i*intgrcols;
+			for(int j=d+1; j<intgrcols; j++){
+				const int prev_col = j-1;
+				dslice[row + j] += dslice[row + prev_col];
+			}
+		}
+
+		for (int i=0; i< shape[0]-wsize; i++){
+	    	const int row = (i+wc)*shape[1];
+	    	const int t_row = i*intgrcols;
+	    	const int b_row = (i+wsize)*intgrcols;
+			for(int j=d; j< shape[1]-wsize; j++){
+				const int col = (j+wc);
+
+				const double lD = dslice[b_row + j+wsize ]
+					         - dslice[b_row +j ]
+					         - dslice[t_row +j+wsize ]
+					         + dslice[t_row+j];
+
+					res_data[d_row + row+col] = (float)(sqwin*lD- Al[row+col] * Ar[row+(j-d+wc)] )*Cl[ row+col ]*Cr[ row+(j-d+wc) ];
+
+				}
+			}
+
+    }
+
+    delete [] dslice;
+
+    delete [] lintegral;
+    delete [] rintegral;
+    delete [] sqlintegral;
+    delete [] sqrintegral;
+
+    delete [] Al;
+    delete [] Ar;
+    delete [] Cl;
+    delete [] Cr;
+
+
+    return cost;
+
+
+}
+
+
+PyObject* census(PyObject* left, PyObject *right, int ndisp, int wsize){
+    // Cast to pointer to Python Array object
+    PyArrayObject* leftA = reinterpret_cast<PyArrayObject*>(left);
+    PyArrayObject* rightA = reinterpret_cast<PyArrayObject*>(right);
+
+    //Get the pointer to the data
+    uint8 * leftp = reinterpret_cast<uint8*>(PyArray_DATA(leftA));
+    uint8 * rightp = reinterpret_cast<uint8*>(PyArray_DATA(rightA));
+
+    npy_intp *shape = PyArray_DIMS(leftA);
+    npy_intp *costshape = new npy_intp[3];
+    costshape[0] = shape[0]; costshape[1] = shape[1]; costshape[2] = ndisp;
+
+
+    PyObject* cost = PyArray_SimpleNew(3, costshape, NPY_INT);
+
+    int* res_data = static_cast<int*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(cost)));
+
+    std::fill_n(res_data,shape[0]*shape[1]*ndisp, wsize*wsize-1);
+
+    int end;
+    int wc = wsize/2;
+    int sqwin = wsize*wsize;
+
+    bool* censustl = new bool[shape[0]*shape[1]*sqwin];
+    bool* censustr = new bool[shape[0]*shape[1]*sqwin];
+
+    for (int i=0; i< shape[0]-wsize;i++){
+    	for(int j=0; j< shape[1]-wsize; j++){
+
+    		for (int wh=0; wh<wsize;wh++){
+    		    for(int ww=0; ww<wsize;ww++){
+
+    		    	censustl[ (i+wc)*shape[1]*sqwin + (j+wc)*sqwin +wh*wsize+ww ] = (leftp[ (i+wc)*shape[1] + (j+wc) ] < leftp[(i+wh)*shape[1] + (j+ww) ]);
+    		    	censustr[ (i+wc)*shape[1]*sqwin + (j+wc)*sqwin +wh*wsize+ww ] = (rightp[ (i+wc)*shape[1] + (j+wc) ] < rightp[(i+wh)*shape[1] + (j+ww) ]);
+    		    }
+    		}
+
+    	}
+    }
+
+
+    for (int i=0; i< shape[0]-wsize; i++){
+    	for(int j=0; j< shape[1]-wsize; j++){
+
+    		end = std::min(ndisp,(j-wc));
+    		for(int d=0; d < end; d++){
+
+    			int sum =0;
+
+    			for (int wh=0; wh<wsize;wh++){
+    				for(int ww=0; ww<wsize;ww++){
+
+
+    					sum += std::abs( censustl[(i+wc)*shape[1]*sqwin + (j+wc)*sqwin +wh*wsize+ww ] - censustr[ (i+wc)*shape[1]*sqwin + (j-d+wc)*sqwin +wh*wsize+ww ] );
+    				}
+    			}
+
+    			res_data[(i+wc)*shape[1]*ndisp + (j+wc)*ndisp+ d] = sum;
+    		}
+    	}
+    }
+
+    delete [] censustl;
+    delete [] censustr;
+
+    return cost;
+
+
+}
+
+
+PyObject* sad(PyObject* left, PyObject *right, int ndisp, int wsize){
+    // Cast to pointer to Python Array object
+    PyArrayObject* leftA = reinterpret_cast<PyArrayObject*>(left);
+    PyArrayObject* rightA = reinterpret_cast<PyArrayObject*>(right);
+
+    //Get the pointer to the data
+    const uint8 * leftp = reinterpret_cast<uint8*>(PyArray_DATA(leftA));
+    const uint8 * rightp = reinterpret_cast<uint8*>(PyArray_DATA(rightA));
+
+    npy_intp *shape = PyArray_DIMS(leftA);
+    npy_intp *costshape = new npy_intp[3];
+    costshape[1] = shape[0]; costshape[2] = shape[1]; costshape[0] = ndisp;
+
+
+    PyObject* cost = PyArray_SimpleNew(3, costshape, NPY_INT);
+
+    const int integrrows = shape[0]+1;
+    const int integrcols = shape[1]+1;
+    int* res_data = static_cast<int*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(cost)));
+
+    const int fill_size = shape[0]*shape[1]*ndisp;
+    std::fill_n(res_data,fill_size, wsize*wsize*255);
+
+
+    int * slice = new int[integrrows*integrcols];
+    const int wc = wsize/2;
+
+    for (int d=0; d<ndisp; d++ ){
+    	const int dind = d*shape[0]*shape[1];
+    	std::fill_n(slice,integrrows*integrcols,0);
+
+    	for( int i=0; i<shape[0]; i++){
+    		const int rowind = i*shape[1];
+    		const int intgrrow = (i+1)*integrcols;
+    		for(int j=d; j<shape[1]; j++){
+    			slice[intgrrow+j+1] = abs( leftp[rowind+j] - rightp[rowind+(j-d)] );
+    		}
+    	}
+
+    	for( int i=1; i<integrrows; i++ ){
+
+    		const int prev_row = (i-1)*integrcols;
+    		const int intgrrow = i*integrcols;
+    		for(int j=d; j<integrcols; j++){
+    			slice[intgrrow+j] += slice[prev_row+j];
+    		}
+    	}
+
+
+    	for( int i=0; i<integrrows; i++ ){
+    		const int rowind = i*integrcols;
+    		for(int j=d+1; j<integrcols; j++){
+    			slice[rowind+j] += slice[rowind+j-1];
+    		}
+    	}
+
+
+    	for(int i=0; i<shape[0]-wsize;i++){
+    		const int place_row = (i+wc)*shape[1];
+    		const int t_row = i*integrcols;
+    		const int b_row = (i+wsize)*integrcols;
+
+    		for(int j=d; j<shape[1]-wsize; j++){
+
+    			res_data[dind+place_row+(j+wc)] = slice[b_row+(j+wsize)  ] -
+    											  slice[b_row+j ] - slice[t_row+(j+wsize) ] +
+    											  slice[t_row+j];
+
+    		}
+    	}
+
+    }
+
+    delete []  slice;
+
+
+    return cost;
+
+
+}
+
+BOOST_PYTHON_MODULE(libintegralmatchers) {
+
+    numeric::array::set_module_and_type("numpy", "ndarray");
+
+
+
+    def("sad",sad);
+    def("census",census);
+    def("nccNister",nccNister);
+    //def("ncc",ncc);
+    import_array();
+}

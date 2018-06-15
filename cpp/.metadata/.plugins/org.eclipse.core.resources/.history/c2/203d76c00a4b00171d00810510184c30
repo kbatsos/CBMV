@@ -1,0 +1,179 @@
+#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
+#include <iostream>
+#include <stdlib.h>
+#include <boost/python.hpp>
+#include "boost/python/extract.hpp"
+#include "boost/python/numeric.hpp"
+#include <numpy/ndarrayobject.h>
+#include <algorithm>
+#include <vector>
+#include <stdint.h>
+#include <assert.h>
+#include <immintrin.h>
+#include <omp.h>
+#include <sstream>
+
+
+using namespace std;
+using namespace boost::python;
+typedef uint8_t uint8;
+typedef int16_t int16;
+typedef unsigned long long int uint64;
+
+#define NCCSIGMA 2*pow(0.1,2)
+#define CENSUSSIGMA 2*pow(8.0,2)
+#define SADSIGMA 2*pow(100.0,2)
+
+
+PyObject* extract_features(PyObject* cost_census, PyObject* cost_ncc, PyObject* cost_sad , PyObject *gt ){
+
+	srand (time(NULL));
+
+    PyArrayObject* censA = reinterpret_cast<PyArrayObject*>(cost_census);
+    PyArrayObject* nccA = reinterpret_cast<PyArrayObject*>(cost_ncc);
+    PyArrayObject* sadA = reinterpret_cast<PyArrayObject*>(cost_sad);
+    PyArrayObject* gtA = reinterpret_cast<PyArrayObject*>(gt);
+
+    double * censp = reinterpret_cast<double*>(PyArray_DATA(censA));
+    double * nccp = reinterpret_cast<double*>(PyArray_DATA(nccA));
+    double * sadp = reinterpret_cast<double*>(PyArray_DATA(sadA));
+    int * gtp = reinterpret_cast<int*>(PyArray_DATA(gtA));
+
+    npy_intp *shape = PyArray_DIMS(gtA);
+    npy_intp *shapecens = PyArray_DIMS(censA);
+    npy_intp *shapencc = PyArray_DIMS(nccA);
+    npy_intp *shapesad = PyArray_DIMS(sadA);
+
+
+    npy_intp featshape = new npy_intp[2];
+    featshape[0] = 3*shape[0]; featshape[1] = 13;
+
+
+	PyObject* features = PyArray_SimpleNew(2, featshape, NPY_FLOAT64);
+
+	double* features_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(features)));
+
+	for (int i=0; i<shape[0]; i++){
+		double min_ncc = RAND_MAX, min_cens = RAND_MAX, min_sad = RAND_MAX,censdenom=0,nccdenom=0,saddenom=0,num;
+		const int pos = i* shapencc[1];
+		int ncc_min_pos =0;
+		int census_min_pos=0;
+		int sad_min_pos=0;
+
+		for(int k=0; k< shapencc[1]; k++){
+                if(censp[pos+k] < min_cens){
+                	min_cens = censp[pos+k];
+                	census_min_pos =k;
+                }
+                if(nccp[pos+k] < min_ncc){
+                	min_ncc = nccp[pos+k];
+                	ncc_min_pos =k;
+                }
+                if(sadp[pos+k] < min_sad){
+                	min_sad = sadp[pos+k];
+                	sad_min_pos = k;
+                }
+
+        }
+
+        for(int k=0; k<shapencc[1]; k++){
+                num = censp[pos+k]-min_cens;
+                censdenom += exp( -( num*num )/CENSUSSIGMA );
+                num =nccp[pos+k]-min_ncc;
+                nccdenom += exp( -( num*num )/NCCSIGMA );
+                num = sadp[pos+k]-min_sad;
+                saddenom += exp( -( num*num )/SADSIGMA );
+        }
+
+        //cost census
+        features_data[i*3*13] = censp[pos+gt[i]];
+        //cost ncc
+        features_data[i*3*13+1] = nccp[pos+gt[i]];
+        //cost sad
+        features_data[i*3*13+2] = sadp[pos+gt[i]];
+
+        //PKRN CENSUS
+        features_data[i*3*13+3] = ( min_cens +.01 ) / (censp[pos+gt[i]]+.01);
+        assert(  ( min_cens +.01 ) / (censp[pos+gt[i]]+.01) > 0);
+        //PKRN NCC
+        features_data[i*3*13+4] = ( min_ncc +1.01 ) / (nccp[pos+gt[i]]+1.01);
+        assert( ( min_ncc +1.01 ) / (nccp[pos+gt[i]]+1.01)>0);
+        //PKRN SAD
+        features_data[i*3*13+5] = ( min_sad +.01 ) / (sadp[pos+gt[i]]+.01);
+        assert( ( min_sad +.01 ) / (sadp[pos+gt[i]]+.01)>0);
+
+
+        //MMN CENSUS
+        features_data[i*3*13+6] = censp[pos+gt[i]] - min_cens;
+        //MMN NCC
+        features_data[i*3*13+7] = nccp[pos+gt[i]] - min_ncc;
+        //MMN SAD
+        features_data[i*3*13+8] = sadp[pos+gt[i]] - min_sad;
+
+        //AML CENSUS
+        features_data[i*3*13+9] = exp( -((features_data[i*3*13+6]*features_data[i*3*13+6]) /CENSUSSIGMA )) /censdenom ;
+        //AML NCC
+        features_data[i*3*13+10] = exp( -((features_data[i*3*13+7]*features_data[i*3*13+7]) /NCCSIGMA )) /nccdenom ;
+        //AML SAD
+        features_data[i*3*13+11] = exp( -((features_data[i*3*13+8]*features_data[i*3*13+8]) /SADSIGMA )) /saddenom ;
+        //label
+        features_data[i*3*13+12] = 1;
+
+        //select a random sample but not in the interval [ gt-1 ,gt+1 ]
+        int s_r = rand()%shapencc[1];
+        while( s_r >= gt[i]-1 && s_r <= gt[i]+1 )
+        	s_r = rand()%shapencc[1];
+
+        //cost census
+        features_data[((i*3)+1)*13] = censp[pos+s_r];
+        //cost ncc
+        features_data[((i*3)+1)*13+1] = nccp[pos+s_r];
+        //cost sad
+        features_data[((i*3)+1)*13+2] = sadp[pos+s_r];
+
+        //PKRN CENSUS
+        features_data[((i*3)+1)*13+3] = ( min_cens +.01 ) / (censp[pos+s_r]+.01);
+        assert(  ( min_cens +.01 ) / (censp[pos+s_r]+.01) > 0);
+        //PKRN NCC
+        features_data[((i*3)+1)*13+4] = ( min_ncc +1.01 ) / (nccp[pos+s_r]+1.01);
+        assert( ( min_ncc +1.01 ) / (nccp[pos+s_r]+1.01)>0);
+        //PKRN SAD
+        features_data[((i*3)+1)*13+5] = ( min_sad +.01 ) / (sadp[pos+s_r]+.01);
+        assert( ( min_sad +.01 ) / (sadp[pos+s_r]+.01)>0);
+
+
+        //MMN CENSUS
+        features_data[((i*3)+1)*13+6] = censp[pos+s_r] - min_cens;
+        //MMN NCC
+        features_data[((i*3)+1)*13+7] = nccp[pos+s_r] - min_ncc;
+        //MMN SAD
+        features_data[((i*3)+1)*13+8] = sadp[pos+s_r] - min_sad;
+
+        //AML CENSUS
+        features_data[((i*3)+1)*13+9] = exp( -((features_data[((i*3)+1)*13+6]*features_data[((i*3)+1)*13+6]) /CENSUSSIGMA )) /censdenom ;
+        //AML NCC
+        features_data[((i*3)+1)*13+10] = exp( -((features_data[((i*3)+1)*13+7]*features_data[((i*3)+1)*13+7]) /NCCSIGMA )) /nccdenom ;
+        //AML SAD
+        features_data[((i*3)+1)*13+11] = exp( -((features_data[((i*3)+1)*13+8]*features_data[((i*3)+1)*13+8]) /SADSIGMA )) /saddenom ;
+        //label
+        features_data[((i*3)+1)*13+12] = 0;
+
+
+
+
+	}
+
+	return features;
+}
+
+
+BOOST_PYTHON_MODULE(libfeatextract) {
+
+	omp_set_num_threads(12);
+    numeric::array::set_module_and_type("numpy", "ndarray");
+
+
+    def("extract_features",extract_features);
+
+    import_array();
+}

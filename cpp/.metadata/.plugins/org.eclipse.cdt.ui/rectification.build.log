@@ -1,0 +1,29 @@
+
+**** Build of configuration Debug for project rectification ****
+
+make all 
+Building file: ../rectification.cpp
+Invoking: GCC C++ Compiler
+g++ -I/usr/include/python2.7 -O0 -g3 -Wall -c -fmessage-length=0 -mavx2 -fopenmp -ftree-vectorize -fPIC -MMD -MP -MF"rectification.d" -MT"rectification.d" -o "rectification.o" "../rectification.cpp"
+../rectification.cpp: In function ‘PyObject* fixrectification(PyObject*, PyObject*, int, int)’:
+../rectification.cpp:427:13: warning: unused variable ‘leftp’ [-Wunused-variable]
+     uint8 * leftp = reinterpret_cast<uint8*>(PyArray_DATA(leftA));
+             ^
+../rectification.cpp:428:13: warning: unused variable ‘rightp’ [-Wunused-variable]
+     uint8 * rightp = reinterpret_cast<uint8*>(PyArray_DATA(rightA));
+             ^
+../rectification.cpp:430:15: warning: unused variable ‘shape’ [-Wunused-variable]
+     npy_intp *shape = PyArray_DIMS(leftA);
+               ^
+../rectification.cpp:431:1: warning: no return statement in function returning non-void [-Wreturn-type]
+ }
+ ^
+Finished building: ../rectification.cpp
+ 
+Building target: librectification.so
+Invoking: GCC C++ Linker
+g++ -fopenmp -fPIC -L/usr/local/cuda-6.5/lib64/ -shared -o "librectification.so"  ./rectification.o   -lpython2.7 -lopencv_core -lopencv_imgcodecs -lopencv_xfeatures2d -lopencv_features2d -lopencv_imgproc -lopencv_highgui -lboost_python
+Finished building target: librectification.so
+ 
+
+**** Build Finished ****

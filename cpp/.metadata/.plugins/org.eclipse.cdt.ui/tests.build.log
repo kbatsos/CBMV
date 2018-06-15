@@ -1,0 +1,16 @@
+
+**** Build of configuration Debug for project tests ****
+
+make all 
+Building file: ../src/tests.cpp
+Invoking: GCC C++ Compiler
+g++ -O0 -g3 -Wall -c -fmessage-length=0 -MMD -MP -MF"src/tests.d" -MT"src/tests.d" -o "src/tests.o" "../src/tests.cpp"
+Finished building: ../src/tests.cpp
+ 
+Building target: tests
+Invoking: GCC C++ Linker
+g++  -o "tests"  ./src/tests.o   
+Finished building target: tests
+ 
+
+**** Build Finished ****
