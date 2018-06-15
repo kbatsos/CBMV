@@ -54,4 +54,3 @@ The txt files specify the training sets used during the training process.
 
 
 
-
