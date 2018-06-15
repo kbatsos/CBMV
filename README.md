@@ -40,7 +40,7 @@ Much of CBMV code is written as C++ libraries and interface with python via boos
 After compiling the C++ libraries, downloading the required python packages and precomputed model, CBMV can be executed using the following command:
 
 ```
-python main.py  --l ./datasets/ArtL/im0.png --r ./datasets/ArtL/im1.png --w 694 --h 554 --d 128 --model /media/kbatsos/Data1/PKLS/modelslr/modelall_4m.rf --prob_save_path ./
+python main.py  --l ./datasets/ArtL/im0.png --r ./datasets/ArtL/im1.png --w 694 --h 554 --d 128 --model ./modelall_4m.rf --prob_save_path ./
 ```
  For a complete list of arguments please see tha main.py file. 
 
@@ -50,7 +50,7 @@ python main.py  --l ./datasets/ArtL/im0.png --r ./datasets/ArtL/im1.png --w 694 
  The above link includes the data we used to trained CBMV. To train CBMV you can use the following command:
 
 ```
-python main.py --train --data_path "./datasets/" --train_add ./mb/additional.txt --train_set ./mb/trainall.txt --model /media/kbatsos/Data1/PKLS/modelslr/model.rf
+python main.py --train --data_path "./datasets/" --train_add ./mb/additional.txt --train_set ./mb/trainall.txt --model ./models/model.rf
 ```
 The txt files specify the training sets used during the training process. 
 
