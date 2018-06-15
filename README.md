@@ -1,7 +1,8 @@
 # CBMV: A Coalesced Bidirectional Matching Volume for Disparity Estimation 
 CBMV: A Coalesced Bidirectional Matching Volume for Disparity Estimation code repository. If you use this code please cite our paper [CBMV: A Coalesced Bidirectional Matching Volume for Disparity Estimation](http://openaccess.thecvf.com/content_cvpr_2018/CameraReady/0598.pdf)
 
-```@inproceedings{batsos2018cbmv,
+```
+@inproceedings{batsos2018cbmv,
   title={CBMV: A Coalesced Bidirectional Matching Volume for Disparity Estimation},
   author={Batsos, Konstantinos and Cai, Changjiang and Mordohai, Philipos},
   booktitle={IEEE Conference on Computer Vision and Pattern Recognition (CVPR)},
@@ -38,7 +39,8 @@ Much of CBMV code is written as C++ libraries and interface with python via boos
 
 After compiling the C++ libraries, downloading the required python packages and precomputed model, CBMV can be executed using the following command:
 
-```python main.py  --l ./datasets/ArtL/im0.png --r ./datasets/ArtL/im1.png --w 694 --h 554 --d 128 --model /media/kbatsos/Data1/PKLS/modelslr/modelall_4m.rf --prob_save_path ./
+```
+python main.py  --l ./datasets/ArtL/im0.png --r ./datasets/ArtL/im1.png --w 694 --h 554 --d 128 --model /media/kbatsos/Data1/PKLS/modelslr/modelall_4m.rf --prob_save_path ./
 ```
  For a complete list of arguments please see tha main.py file. 
 
@@ -47,7 +49,8 @@ After compiling the C++ libraries, downloading the required python packages and 
 
  The above link includes the data we used to trained CBMV. To train CBMV you can use the following command:
 
-```python main.py --train --data_path "./datasets/" --train_add ./mb/additional.txt --train_set ./mb/trainall.txt --model /media/kbatsos/Data1/PKLS/modelslr/model.rf
+```
+python main.py --train --data_path "./datasets/" --train_add ./mb/additional.txt --train_set ./mb/trainall.txt --model /media/kbatsos/Data1/PKLS/modelslr/model.rf
 ```
 The txt files specify the training sets used during the training process. 
 
