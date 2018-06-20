@@ -1,3 +1,4 @@
 *.pyc
 datasets
 test_rect.py
+*.pfm linguist-vendored
