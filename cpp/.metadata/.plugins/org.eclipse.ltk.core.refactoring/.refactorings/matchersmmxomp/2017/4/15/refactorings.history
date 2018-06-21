@@ -1,4 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<session version="1.0">
-<refactoring comment="Rename resource &apos;matchersmmxomp/matchersmmxomp&apos; to &apos;matchersmmxomp.cpp&apos;" description="Rename resource &apos;matchersmmxomp&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="matchersmmxomp" name="matchersmmxomp.cpp" stamp="1491852719786" updateReferences="true"/>
-</session>

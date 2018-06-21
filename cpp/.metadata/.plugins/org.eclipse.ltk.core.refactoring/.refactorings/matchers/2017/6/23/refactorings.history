@@ -1,4 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<session version="1.0">
-<refactoring comment="Rename resource &apos;matchers/integralmmx.cpp&apos; to &apos;matchers.cpp&apos;" description="Rename resource &apos;integralmmx.cpp&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="integralmmx.cpp" name="matchers.cpp" stamp="1496706739204" updateReferences="true"/>
-</session>
