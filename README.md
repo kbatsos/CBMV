@@ -1,4 +1,4 @@
-# CBMV: A Coalesced Bidirectional Matching Volume for Disparity Estimation 
+# CBMV: A Coalesced Bidirectional Matching Volume for Disparity Estimation CVPR 2018
 CBMV: A Coalesced Bidirectional Matching Volume for Disparity Estimation code repository. If you use this code please cite our paper [CBMV: A Coalesced Bidirectional Matching Volume for Disparity Estimation](http://openaccess.thecvf.com/content_cvpr_2018/CameraReady/0598.pdf)
 
 ```
