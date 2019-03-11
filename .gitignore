@@ -1,5 +1,70 @@
+# Compiled source #
+###################
+*.com
+*.class
+*.dll
+*.exe
+*.o
+*.so
 *.pyc
-datasets
-test_rect.py
-*.pfm linguist-vendored
-cpp/.metadata
+
+# Packages #
+############
+# it's better to unpack these files and commit the raw source
+# git has its own built in compression methods
+*.7z
+*.dmg
+*.gz
+*.iso
+*.jar
+*.rar
+*.tar
+*.zip
+
+# Logs and databases #
+######################
+*.log
+*.sql
+*.sqlite
+
+# OS generated files #
+######################
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+.*.swp
+cpp/localexp/build/
+cpp/localexp/build2/
+cpp/localexp/lib/
+cpp/localexp/.*.swp
+cpp/tags
+cpp/.metadata/
+
+cpp/featextract/Debug/.*.swp
+cpp/featextract/Debug/*.d
+cpp/featextract/Debug/*.o
+cpp/featextract/Debug/*.so
+cpp/featextract/.*.swp
+
+cpp/matchers/Debug/.*.swp
+cpp/matchers/Debug/*.d
+cpp/matchers/Debug/*.o
+cpp/matchers/Debug/*.so
+cpp/matchers/.*.swp
+
+cpp/rectification/Debug/.*.swp
+cpp/rectification/Debug/*.d
+cpp/rectification/Debug/*.o
+cpp/rectification/Debug/*.so
+cpp/rectification/.*.swp
+
+cpp/lib/
+results/
+datasets/
+models/
+.vscode/
