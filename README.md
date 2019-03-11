@@ -45,7 +45,7 @@ python main.py  --l ./datasets/ArtL/im0.png --r ./datasets/ArtL/im1.png --w 694 
  For a complete list of arguments please see tha main.py file. 
 
 
- # Training 
+# Training 
 
  The above link includes the data we used to trained CBMV. To train CBMV you can use the following command:
 
@@ -55,6 +55,17 @@ python main.py --train --data_path "./datasets/" --train_add ./mb/additional.txt
 The txt files specify the training sets used during the training process. 
 
 
+# Testing : Added by CCJ
+- to do ...
+
+## Local Expansion Method
+- to do ...
+
+# Dataset Format
+- 'disp0GT.pfm';
+- left image 'im0.png', right image 'im1.png';
+- 'calib.txt';
+- to do ...
 
 
 
