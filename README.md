@@ -66,7 +66,7 @@ cd ~/cbmv-cvpr18/cpp/featextract/Debug && make clean && make
 cd ~/cbmv-cvpr18/cpp/rectification/Debug && make clean && make
 ```
 
-- To compile `post` for postprocessing:
+- To compile `post` for postprocessing:  
 This part contains the GPU code. We assume the CUDA was installed at `/usr/local/cuda-8.0/`. If not, please modify 
 the line `CUDA_LIBS = /usr/local/cuda-8.0/lib64` in the file `*/post/makefile`.
 
@@ -74,7 +74,7 @@ the line `CUDA_LIBS = /usr/local/cuda-8.0/lib64` in the file `*/post/makefile`.
 cd ~/cbmv-cvpr18/cpp/post/ && make clean && make
 ```
 
-- To compile `localexp` for Local Expansion Moves:
+- To compile `localexp` for Local Expansion Moves:  
 This part requires the Maxflow code by Boykov and Kolmogorov 
 [[Code v3.01]](http://vision.csd.uwo.ca/code) [[Code v3.04]](http://pub.ist.ac.at/~vnk/software.html).
 For your convenience, we already include and confiure it. But please note they are freely available for **research purposes only**. You could also check 
