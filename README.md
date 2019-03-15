@@ -79,11 +79,10 @@ This part requires the Maxflow code by Boykov and Kolmogorov
 [[Code v3.01]](http://vision.csd.uwo.ca/code) [[Code v3.04]](http://pub.ist.ac.at/~vnk/software.html).
 For your convenience, we already include and confiure it. But please note they are freely available for **research purposes only**. You could also check 
 the [Local Expansion Move repository](https://github.com/t-taniai/LocalExpStereo) for the license.  For `localexp` compilation, we provide the `CMakeLists.txt` file. Run the following
-
 ```bash
 cd ~/cbmv-cvpr18/cpp/localexp && mkdir build && cd build && cmake .. && make
 ```
-will generate the libraries in the directory `*/localexp/lib`.
+ will generate the libraries in the directory `*/localexp/lib`.
 
 ---
 
