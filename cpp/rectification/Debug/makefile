@@ -43,7 +43,7 @@ all: librectification.so
 librectification.so: $(OBJS) $(USER_OBJS)
 	@echo 'Building target: $@'
 	@echo 'Invoking: GCC C++ Linker'
-	g++ -fopenmp -fPIC -L/usr/local/cuda-6.5/lib64/ -shared -o "librectification.so" $(OBJS) $(USER_OBJS) $(LIBS)
+	g++ -fopenmp -fPIC -L/usr/local/opencv-3.2.0/lib -shared -o "librectification.so" $(OBJS) $(USER_OBJS) $(LIBS)
 	@echo 'Finished building target: $@'
 	@echo ' '
 

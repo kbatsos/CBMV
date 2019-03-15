@@ -17,7 +17,7 @@ CPP_DEPS += \
 %.o: ../%.cpp
 	@echo 'Building file: $<'
 	@echo 'Invoking: GCC C++ Compiler'
-	g++ -I/usr/include/python2.7 -I/usr/include -O3 -g3 -Wall -c -fmessage-length=0 -mavx2 -fopenmp -ftree-vectorize -std=c++11 -fPIC -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@:%.o=%.d)" -o "$@" "$<"
+	g++ -I/usr/local/lib/python2.7/dist-packages/numpy/core/include -I/usr/include/python2.7 -I/usr/include -O3 -g3 -Wall -c -fmessage-length=0 -mavx2 -fopenmp -ftree-vectorize -std=c++11 -fPIC -MMD -MP -MF"$(@:%.o=%.d)" -MT"$(@:%.o=%.d)" -o "$@" "$<"
 	@echo 'Finished building: $<'
 	@echo ' '
 
