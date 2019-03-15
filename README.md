@@ -51,22 +51,22 @@ If you have installed OpenCV at different directory, please update the line `g++
 in the file `*/Debug/subdir.mk` for including header files; and modify the line `g++ ... -L/usr/local/opencv-3.2.0/lib ...` 
 in the file `*/Debug/makefile` for library linking.
 
-### To compile `matchers` for four basic matchers:
+- To compile `matchers` for four basic matchers:
 ```bash
 cd ~/cbmv-cvpr18/cpp/matchers/Debug && make clean && make
 ```
 
-### To compile `featextract` for feature extraction:
+- To compile `featextract` for feature extraction:
 ```bash
 cd ~/cbmv-cvpr18/cpp/featextract/Debug && make clean && make
 ```
 
-### To compile `rectification` for rectifying stereo image pair:
+- To compile `rectification` for rectifying stereo image pair:
 ```bash
 cd ~/cbmv-cvpr18/cpp/rectification/Debug && make clean && make
 ```
 
-### To compile `post` for postprocessing:
+- To compile `post` for postprocessing:
 This part contains the GPU code. We assume the CUDA was installed at `/usr/local/cuda-8.0/`. If not, please modify 
 the line `CUDA_LIBS = /usr/local/cuda-8.0/lib64` in the file `*/post/makefile`.
 
@@ -74,7 +74,7 @@ the line `CUDA_LIBS = /usr/local/cuda-8.0/lib64` in the file `*/post/makefile`.
 cd ~/cbmv-cvpr18/cpp/post/ && make clean && make
 ```
 
-### To compile `localexp` for Local Expansion Moves:
+- To compile `localexp` for Local Expansion Moves:
 This part requires the Maxflow code by Boykov and Kolmogorov 
 [[Code v3.01]](http://vision.csd.uwo.ca/code) [[Code v3.04]](http://pub.ist.ac.at/~vnk/software.html).
 For your convenience, we already include and confiure it. But please note they are freely available for **research purposes only**. You could also check 
