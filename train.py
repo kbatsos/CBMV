@@ -13,11 +13,12 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
-sys.path.insert(0,'./cpp/rectification/Debug')
+#sys.path.insert(0,'./cpp/rectification/Debug')
 sys.path.insert(0,'.')
 sys.path.insert(0,'./pylibs')
-sys.path.insert(0,'./cpp/matchers/Debug')
-sys.path.insert(0,'./cpp/featextract/Debug')
+#sys.path.insert(0,'./cpp/matchers/Debug')
+#sys.path.insert(0,'./cpp/featextract/Debug')
+sys.path.insert(0,'./cpp/lib')
 
 import librectification as rect
 import pfmutil as pfm 
@@ -60,16 +61,22 @@ class Training(object):
 	def __fix_rectification(self,index):
 		imgl = scipy.misc.imread(self.__data_path + self.__trainset[index]+"/im0.png",mode='L' )
 		imgr = scipy.misc.imread( self.__data_path + self.__trainset[index]+"/im1.png",mode='L' )
-		imgrL = scipy.misc.imread( self.__data_path +self.__trainset[index]+"/im1L.png",mode='L' )
+                if os.path.exists(self.__data_path +self.__trainset[index]+"/im1L.png"): 
+                    imgrL = scipy.misc.imread( self.__data_path +self.__trainset[index]+"/im1L.png",mode='L' )
+                else:
+                    imgrL = None
 			
 		h_l = np.zeros((3,3)).astype(np.float32)
 		h_r = np.zeros((3,3)).astype(np.float32)
 
 		# returns rectified images and homographies in place
 		rect.fixrectification(imgl,imgr,h_l,h_r,)
-
-		imgrLw = rect.warp(img=imgrL,homography=h_r,invert=False,option=False)		
+                if imgrL is not None:
+                    imgrLw = rect.warp(img=imgrL,homography=h_r,invert=False,option=False)
+                else:
+                    imgrLw = None
 		return imgl,imgr,imgrLw				
+		#return imgl,imgr
 
 	def __read_calib(self,index):
 		w=0;
@@ -99,13 +106,19 @@ class Training(object):
 		gt = np.delete(gt, infs[:,0],axis=0)
 		gt = np.round(gt)
 		gt = gt.astype(np.int32)	
+                #print ("loading gt ... gt shape = {}".format(gt.shape))
 
 		random_samples = fte.generate_d_indices(gt,ndisp,1)
+                assert random_samples.shape[1] == 3 # here : 3 means 1 positive sample + 2 negative ones;
 		samples = np.empty((random_samples.shape[0]*random_samples.shape[1],21))
+                #print ("samples shape = {}".format(samples.shape))
+                #print ("staring census ...")
 
 		################## Census compute ##########################################################
-
+                #print ('w = {}, h = {}, ndisp = {}, censW = {}'.format(w, h, ndisp, self.__censw))
+                #print ('last iml = {}, last imr = {}'.format(iml[h-1,w-1], imr[h-1,w-1]))
 		costcensus = mtc.census(iml,imr,ndisp,self.__censw ).astype(np.float64)
+                #print ('costcensus shape = {}'.format(costcensus.shape))
 		costcensusR = fte.get_right_cost(costcensus)
 		costcensus = np.reshape(costcensus, [ costcensus.shape[0]*costcensus.shape[1],costcensus.shape[2] ])
 		costcensusR = np.reshape(costcensusR, [ costcensusR.shape[0]*costcensusR.shape[1],costcensusR.shape[2] ])
@@ -116,6 +129,7 @@ class Training(object):
 		samples[:,4] = fte.extract_ratio( costcensus,random_samples,.01  )
 		samples[:,8] = fte.extract_likelihood( costcensus,random_samples,self.__cens_sigma )
 		del costcensus
+                #print ("census done!")
 
 		r_pkrn = fte.extract_ratio(costcensusR,.01)
 
@@ -262,7 +276,7 @@ class Training(object):
 		print "Creating training bank..."
 		for i in range(0,len(self.__trainset)): 
 			print "sampling " + self.__trainset[i]
-			iml,imr,imgrl = self.__fix_rectification(i)
+			iml,imr,_ = self.__fix_rectification(i)
 			self.__training_samples = np.append(self.__training_samples, self.__create_samples_mem(iml,imr,i),axis=0 )
 	
 
