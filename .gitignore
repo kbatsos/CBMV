@@ -39,7 +39,6 @@ Thumbs.db
 
 .*.swp
 cpp/localexp/build/
-cpp/localexp/build2/
 cpp/localexp/lib/
 cpp/localexp/.*.swp
 cpp/tags
@@ -64,6 +63,7 @@ cpp/rectification/Debug/*.so
 cpp/rectification/.*.swp
 
 cpp/lib/
+cpp/build
 results/
 datasets/
 models/
