@@ -212,6 +212,7 @@ PyObject* census(PyObject* left, PyObject *right, int ndisp, int wsize){
     npy_intp *shape = PyArray_DIMS(leftA);
     npy_intp *costshape = new npy_intp[3];
     costshape[0] = shape[0]; costshape[1] = shape[1]; costshape[2] = ndisp;
+		//std::cout << "shape[0] = " << shape[0]<< ",shape[1] = " << shape[1] << ",ndisp = "<<ndisp << "\n";
 
 
     PyObject* cost = PyArray_SimpleNew(3, costshape, NPY_FLOAT64);
@@ -222,18 +223,31 @@ PyObject* census(PyObject* left, PyObject *right, int ndisp, int wsize){
 
     int16 * leftp = (int16*)calloc(shape[0]*shape[1],sizeof(int16));
     int16 * rightp = (int16*)calloc(shape[0]*shape[1],sizeof(int16));
-
-    #pragma omp parallel num_threads(12)
-    {
-		#pragma omp for
-		for (int i=0; i< shape[0]; i++){
+    //for (int i=0;i<shape[0]*shape[1];i+=200) printf ("%d ",leftp[i]);
+		//for (int i=0;i<shape[0]*shape[1];i+=200) printf ("%d ",rightp[i]);
+    /*
+		std::cout << "first 1 element: " << (int)lefim[0] << "," << (int)rightim[0] << "\n";
+		int last = shape[0]*shape[1];
+    std::cout << "last 1 element: " << leftp[last-1] << "," << rightp[last-1] << "\n";
+    std::cout << "last 1 elemnt: " << (int)lefim[last-1] << "," << (int)rightim[last-1] << "\n";
+    std::cout << "here 0 !\n";
+    */
+    
+#pragma omp parallel num_threads(12)
+{
+#pragma omp for
+	for (int i=0; i< shape[0]; i++){
+			//if (omp_get_thread_num() == 0)
+			//	std:: cout << "i = " << i << "thred id = " << omp_get_thread_num() << "\n";
 			for(int j=0; j< shape[1]; j++){
 				leftp[i*shape[1]+j] = lefim[i*shape[1]+j];
 				rightp[i*shape[1]+j] = rightim[i*shape[1]+j];
+				//if (i == shape[0] -1 && j == shape[1] -1)
+				//	printf ("leftp[%d,%d] = %d, rightp[%d,%d] = %d\n", i,j,leftp[i*shape[1]+j], i,j,rightp[i*shape[1]+j]);
 			}
 		}
-    }
-
+}
+    
     int wc = wsize/2;
     int vecsize = wsize*wsize;
 	if(vecsize%8 > 0)
@@ -243,8 +257,10 @@ PyObject* census(PyObject* left, PyObject *right, int ndisp, int wsize){
     __m128i* censustl = new __m128i[shape[0]*shape[1]*tchuncks];
     __m128i* censustr = new __m128i[shape[0]*shape[1]*tchuncks];
 
-    #pragma omp parallel num_threads(12)
-    {
+    //printf("here 1 !\n");
+    
+#pragma omp parallel num_threads(12)
+		{
 
 		int16 * vecl = (int16*)calloc(vecsize,sizeof(int16));
 		int16 * vecr = (int16*)calloc(vecsize,sizeof(int16));
@@ -252,6 +268,7 @@ PyObject* census(PyObject* left, PyObject *right, int ndisp, int wsize){
 		#pragma omp for
 		for (int i=0; i< shape[0]-wsize;i++){
 			for(int j=0; j< shape[1]-wsize; j++){
+
 				for(int wh=0; wh<wsize; wh++){
 					memcpy(&vecl[wh*wsize], &leftp[(i+wh)*shape[1]+j],wsize*sizeof(int16));
 					memcpy(&vecr[wh*wsize], &rightp[(i+wh)*shape[1]+j],wsize*sizeof(int16));
@@ -272,9 +289,9 @@ PyObject* census(PyObject* left, PyObject *right, int ndisp, int wsize){
 
 	    delete [] vecl;
 	    delete [] vecr;
+			// for debugging
+			//if (omp_get_thread_num() == 0) printf("here 2, thred id = %d\n", omp_get_thread_num());
     }
-
-
 
 
 
