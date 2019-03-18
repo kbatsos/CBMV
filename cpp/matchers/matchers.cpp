@@ -12,7 +12,8 @@
 #include <immintrin.h>
 #include <omp.h>
 #include <sstream>
-
+//added by CCJ: for macro THREADS_NUM_USED
+#include "../paramSetting.hpp"
 
 using namespace std;
 using namespace boost::python;
@@ -49,7 +50,9 @@ PyObject* nccNister(PyObject* left, PyObject *right, int ndisp, int wsize){
     unsigned long long * sqlintegral = (unsigned long long *)calloc(intgrrows*intgrcols,sizeof(unsigned long long));
     unsigned long long * sqrintegral = (unsigned long long *)calloc(intgrrows*intgrcols,sizeof(unsigned long long));
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+// added by CCJ for using THREADS_NUM_USED
+#pragma omp parallel num_threads(THREADS_NUM_USED)
     {
 		#pragma omp for
 		for(int i=0; i<shape[0]; i++){
@@ -67,7 +70,8 @@ PyObject* nccNister(PyObject* left, PyObject *right, int ndisp, int wsize){
 
 
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
     {
 		for (int i=1; i< intgrrows; i++){
 			const int row = i*intgrcols;
@@ -82,7 +86,8 @@ PyObject* nccNister(PyObject* left, PyObject *right, int ndisp, int wsize){
 		}
     }
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
     {
 		#pragma omp for
 		for(int i=0; i<intgrrows; i++){
@@ -103,7 +108,8 @@ PyObject* nccNister(PyObject* left, PyObject *right, int ndisp, int wsize){
     double* Cl = (double *)calloc(shape[0]*shape[1],sizeof(double));
     double* Cr = (double *)calloc(shape[0]*shape[1],sizeof(double));
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
     {
 		#pragma omp for
 		for (int i=0; i< shape[0]-wsize;i++){
@@ -124,7 +130,8 @@ PyObject* nccNister(PyObject* left, PyObject *right, int ndisp, int wsize){
 		}
     }
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
     {
 
 		double * dslice = (double*)calloc(intgrrows*intgrcols,sizeof(double));
@@ -233,7 +240,8 @@ PyObject* census(PyObject* left, PyObject *right, int ndisp, int wsize){
     std::cout << "here 0 !\n";
     */
     
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 {
 #pragma omp for
 	for (int i=0; i< shape[0]; i++){
@@ -259,7 +267,8 @@ PyObject* census(PyObject* left, PyObject *right, int ndisp, int wsize){
 
     //printf("here 1 !\n");
     
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 		{
 
 		int16 * vecl = (int16*)calloc(vecsize,sizeof(int16));
@@ -295,7 +304,8 @@ PyObject* census(PyObject* left, PyObject *right, int ndisp, int wsize){
 
 
 
-	#pragma omp parallel num_threads(12)
+	//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
     {
     	__m128i divc = _mm_set1_epi16(0);
 		#pragma omp for
@@ -363,7 +373,8 @@ PyObject* sadsob(PyObject* left, PyObject *right, int ndisp, int wsize){
 	const int fill_size = shape[0]*shape[1]*ndisp;
 	std::fill_n(res_data,fill_size, RAND_MAX);
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 {
 	double * slice = new double[integrrows*integrcols];
 	const int wc = wsize/2;
@@ -453,7 +464,8 @@ PyObject* zsad(PyObject* left, PyObject *right, int ndisp, int wsize){
 	const int sqw = wsize*wsize;
 	const int wc = wsize/2;
 
-	#pragma omp parallel num_threads(12)
+	//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for(int i=0; i< shape[0]-wsize; i++){
@@ -473,7 +485,8 @@ PyObject* zsad(PyObject* left, PyObject *right, int ndisp, int wsize){
 	}
 
 
-	#pragma omp parallel num_threads(12)
+	//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for(int d=0; d<ndisp;d++){
@@ -519,7 +532,8 @@ PyObject* sobel(PyObject* img ){
     vsobel[3] = -2; vsobel[4] =0; vsobel[5] = 2;
     vsobel[6] = -1; vsobel[7] =0; vsobel[8] = 1;
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
     {
 		#pragma omp for
     	for(int i=0; i<shape[0]-3; i++){
@@ -542,8 +556,10 @@ PyObject* sobel(PyObject* img ){
 
 int initthreads(){
 	int ready=0;
-#pragma omp parallel for reduction(+ : ready) num_threads(12)
-	for(int i=0; i<12; i++){
+//#pragma omp parallel for reduction(+ : ready) num_threads(12)
+#pragma omp parallel for reduction(+ : ready) num_threads(THREADS_NUM_USED)
+	//for(int i=0; i<12; i++){
+          for(int i=0; i<THREADS_NUM_USED; i++){
 		ready +=1;
 	}
 	return ready;
@@ -551,7 +567,8 @@ int initthreads(){
 
 BOOST_PYTHON_MODULE(libmatchers) {
 
-	omp_set_num_threads(12);
+	//omp_set_num_threads(12);
+        omp_set_num_threads(THREADS_NUM_USED);
     numeric::array::set_module_and_type("numpy", "ndarray");
     def("census",census);
     def("nccNister",nccNister);

@@ -12,6 +12,8 @@
 #include <immintrin.h>
 #include <omp.h>
 #include <sstream>
+//added by CCJ: for macro THREADS_NUM_USED
+#include "../paramSetting.hpp"
 
 using namespace std;
 using namespace boost::python;
@@ -34,7 +36,9 @@ PyObject* swap_axes(PyObject* cost ){
 
 	double* res_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+// added by CCJ for using THREADS_NUM_USED
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for(int i=0; i<res_shape[0]*res_shape[1]; i++){
@@ -63,7 +67,8 @@ PyObject* swap_axes_back(PyObject* cost ){
 
 	double* res_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for(int i=0; i<res_shape[1]*res_shape[2]; i++){
@@ -92,7 +97,8 @@ PyObject* get_cost(PyObject* cost ){
 
 	double* res_data = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for(int i=0; i<shape[0]*shape[1]; i++){
@@ -123,7 +129,8 @@ PyObject* get_right_cost(PyObject* cost ){
 	int fill_size = shape[0]*shape[1]*shape[2];
 	std::fill_n(res_data,fill_size, costp[0]);
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for(int d=0; d<shape[2]; d++){
@@ -161,7 +168,8 @@ PyObject* generate_d_indices(
 	std::fill_n(rsd, sshape[0]*sshape[1], 0);
 	std::cout << samples[0] << std::endl;
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 		{
     #pragma omp for
 		for(long int s=0; s<samples[0]; s++){
@@ -225,7 +233,8 @@ PyObject* get_samples(
 	PyObject* res= PyArray_SimpleNew(1, sshape, NPY_FLOAT64);
 	double* resd = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 		{
     #pragma omp for
 		for(long int s=0; s<samples[0]; s++){
@@ -262,7 +271,8 @@ PyObject* extract_pkrn(
 	PyObject* res= PyArray_SimpleNew(1, sshape, NPY_FLOAT64);
 	double* resd = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for (long int i= 0; i <vol_shape[0]; i++ ){
@@ -303,7 +313,8 @@ PyObject* extract_pkrn_test(
 	PyObject* res= PyArray_SimpleNew(2, vol_shape, NPY_FLOAT64);
 	double* resd = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for (long int i= 0; i <vol_shape[0]; i++ ){
@@ -351,7 +362,8 @@ PyObject* extract_aml(
 	PyObject* res= PyArray_SimpleNew(1, sshape, NPY_FLOAT64);
 	double* resd = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for (long int i= 0; i <vol_shape[0]; i++ ){
@@ -402,7 +414,8 @@ PyObject* extract_aml_testing(
 	PyObject* res= PyArray_SimpleNew(2, vol_shape, NPY_FLOAT64);
 	double* resd = static_cast<double*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for (long int i= 0; i <vol_shape[0]; i++ ){
@@ -453,7 +466,8 @@ PyObject* get_left_cost_from_right(PyObject* cost ){
 	int fill_size = shape[0]*shape[1]*shape[2];
 	std::fill_n(res_data,fill_size, costp[0]);
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for(int d=0; d<shape[2]; d++){
@@ -486,7 +500,8 @@ PyObject* generate_labels(PyObject* rsamp ){
 
 	int* res_data = static_cast<int*>(PyArray_DATA(reinterpret_cast<PyArrayObject*>(res)));
 
-#pragma omp parallel num_threads(12)
+//#pragma omp parallel num_threads(12)
+#pragma omp parallel num_threads(THREADS_NUM_USED)
 	{
 		#pragma omp for
 		for(long int d=0; d<shape[0]; d++){
@@ -503,7 +518,9 @@ PyObject* generate_labels(PyObject* rsamp ){
 
 BOOST_PYTHON_MODULE(libfeatextract) {
 
-	omp_set_num_threads(12);
+	//omp_set_num_threads(12);
+    omp_set_num_threads(THREADS_NUM_USED);
+
     numeric::array::set_module_and_type("numpy", "ndarray");
 
     def("get_cost", get_cost);
