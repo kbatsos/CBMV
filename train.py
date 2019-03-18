@@ -272,7 +272,7 @@ class Training(object):
 
 
 
-	def train_model(self,save_model):
+	def train_model(self,save_model,n_jobs=6):
 		print "Creating training bank..."
 		for i in range(0,len(self.__trainset)): 
 			print "sampling " + self.__trainset[i]
@@ -282,9 +282,10 @@ class Training(object):
 
 		print "Number of training samples: " + str(self.__training_samples.shape)
 		print "Training model"
-		forest = RandomForestClassifier(min_samples_leaf=700,oob_score=False,n_jobs=6);
+		forest = RandomForestClassifier(min_samples_leaf=700,oob_score=False,n_jobs=n_jobs);
 		forest.set_params(n_estimators=50,verbose=3);
 		forest.fit(self.__training_samples[:,0:self.__training_samples.shape[1]-1],self.__training_samples[:,self.__training_samples.shape[1]-1]);
 
 		with open(save_model,'wb') as f:
 				cPickle.dump(forest,f);	
+                                print ("model is saved at {}".format(save_model))
