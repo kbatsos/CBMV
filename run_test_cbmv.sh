@@ -15,6 +15,16 @@ fi
 limg="${test_set}/im0.png"
 rimg="${test_set}/im1.png"
 disp_save="${resultDir}${test_set}_disp.pfm"
+
+###########################
+## using local expansion ##
+###########################
 python main.py --saveCostVolume --loadCostVolume --data_path=$data_path \
  	--test_set=$test_set --model=$modelname --prob_save_path=$resultDir \
 	--disp_save_path=$disp_save --l=$limg --r=$rimg --isLocalExp
+
+
+#####################################
+## using post-processing in MC-CNN ##
+#####################################
+python main.py --saveCostVolume --loadCostVolume --data_path=$data_path --test_set=$test_set --model=$modelname --prob_save_path=$resultDir --disp_save_path=$disp_save --l=$limg --r=$rimg
