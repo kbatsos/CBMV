@@ -17,12 +17,15 @@ from matplotlib import animation
 
 import time
 
-sys.path.insert(0,'./cpp/rectification/Debug')
+#sys.path.insert(0,'./cpp/rectification/Debug')
 sys.path.insert(0,'.')
 sys.path.insert(0,'./pylibs')
-sys.path.insert(0,'./cpp/matchers/Debug')
-sys.path.insert(0,'./cpp/featextract/Debug')
+#sys.path.insert(0,'./cpp/matchers/Debug')
+#sys.path.insert(0,'./cpp/featextract/Debug')
 sys.path.insert(0,'./cpp/post')
+""" added by CCJ"""
+sys.path.insert(0,'./cpp/lib')
+
 
 import librectification as rect
 import pfmutil as pfm 
@@ -30,6 +33,11 @@ import libmatchers as mtc
 import libfeatextract as fte
 import progressbar as pgb
 import post
+
+""" added by CCJ"""
+sys.path.insert(0,'./cpp/localexp/lib')
+import liblocal_exp_stereo as localExp
+#print(sys.path)
 
 class Testing(object):
 
@@ -132,12 +140,13 @@ class Testing(object):
 
 
 
-	def eval_prob(self,prob,disp_save_path,display=False,interpolate=False):
-		prob =  np.reshape(prob, [self.h,self.w,self.d,2])	
-		prob = fte.get_cost(prob)	
-		probr = fte.get_right_cost(prob)		
-
-		self.do_post(prob,probr,disp_save_path,display,interpolate)
+	def eval_prob(self,prob,disp_save_path,display=False,interpolate=False, isLocalExp=True):
+		prob =  np.reshape(prob, [self.h,self.w,self.d,2])
+		prob = fte.get_cost(prob) # now in shape [imgH, imgW, ndisp]
+        
+		probr = fte.get_right_cost(prob)# now in shape [imgH, imgW, ndisp]
+                #print (prob.shape, probr.shape)
+		self.do_post(prob,probr,disp_save_path,display,interpolate,isLocalExp)
 
 
 
@@ -440,20 +449,67 @@ class Testing(object):
 		return disp
 
 
+        """ added by CCJ"""
+        def __postprocessing_localExp(self, lcost, display):
+                #NOTE: this is the parameters you can tune, for local expansion stereo method;
+                localExp_args_dict = {
+                        'outputDir' : './results/localExp-cbmv/' + self.__testset,
+                        'targetDir' : self.__data_path + self.__testset,
+                        'pmIterations': 1,
+                        'smooth_weight': 1.0,
+                        'threadNum' : 16,
+                        'iterations': 2,# 4
+                        'filterRadious' : 20,
+                        'mc_threshold' : 0.8,
+                        'ndisp' : self.d,
+                        'cell_w1' : 0.01,
+                        'cell_w2' : 0.02,
+                        'cell_w3' : 0.03,
+                        
+                        'isTestDataset': False,
+                        'seed' : 1234,
+                        }
+                print "arguments = ", localExp_args_dict
+                # the input lcost shape : [h, w, d];
+                # swap its axes to [d, h, w], by using numpy.transpose();
+                h,w,d = lcost.shape
+                
+                ''' # not work:
+                print 'lcost shape = ', lcost.shape
+                print 'after swap axes, lcost shape = ', np.transpose(lcost, [2,0,1]).shape
+                cost_lxp = np.transpose(lcost, [2,0,1]).astype(np.float32) 
+                '''
+                
+                cost_lxp = np.zeros([d,h,w], np.float32)
+                for d_idx in range(0, d):
+                    cost_lxp[d_idx, :, :] = lcost[:,:, d_idx]
+                
+                displ = localExp.run_local_exp_stereo(localExp_args_dict,cost_lxp)
+                return displ
 
 
-	def do_post(self,lcost,rcost,save_path,display,interpolate=False ):
+	def do_post(self,lcost,rcost,save_path,display,interpolate=False, 
+                # added by CCJ;
+                isLocalExp = True
+                ):
 		imgl = self.imgl.astype(np.float32)
 		imgr = self.imgr.astype(np.float32)
 		imgl = (imgl-np.mean(imgl))/np.std(imgl)
 		imgr = (imgr-np.mean(imgr))/np.std(imgr)
-		if(interpolate):
+                #****************
+                # added by CCJ;
+                if (isLocalExp):
+                        print 'running local expansion ...'
+                        displ = self.__postprocessing_localExp(lcost.astype(np.float32), display)
+                elif(interpolate):
 			displ = self.__postprocessing_mem_interp( imgl,imgr, lcost,-1,display)
 		else:
 			displ = self.__postprocessing_mem( imgl,imgr, lcost,-1,display)
 		
-		print "Saving"
 		pfm.save( save_path,displ.astype(np.float32))
+		print ("Saved {}".format(save_path))
+        
+
 
 	def __fix_rectification(self,lpath,rpath):
 		imgl = scipy.misc.imread( lpath,mode='L' );
@@ -574,10 +630,3 @@ class Testing(object):
 		
 		rf =[]
 		return proba		
-		
-
-
-				
-		
-		
-
