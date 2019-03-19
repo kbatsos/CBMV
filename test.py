@@ -474,12 +474,6 @@ class Testing(object):
                 # swap its axes to [d, h, w], by using numpy.transpose();
                 h,w,d = lcost.shape
                 
-                ''' # not work:
-                print 'lcost shape = ', lcost.shape
-                print 'after swap axes, lcost shape = ', np.transpose(lcost, [2,0,1]).shape
-                cost_lxp = np.transpose(lcost, [2,0,1]).astype(np.float32) 
-                '''
-                
                 cost_lxp = np.zeros([d,h,w], np.float32)
                 for d_idx in range(0, d):
                     cost_lxp[d_idx, :, :] = lcost[:,:, d_idx]
