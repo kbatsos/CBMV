@@ -13,11 +13,13 @@ import numpy as np
 import math
 import matplotlib.pyplot as plt
 
-#sys.path.insert(0,'./cpp/rectification/Debug')
 sys.path.insert(0,'.')
 sys.path.insert(0,'./pylibs')
+""" if using makefile to compile, please add './cpp/*/Debug' to the path for importing libraries"""
+#sys.path.insert(0,'./cpp/rectification/Debug')
 #sys.path.insert(0,'./cpp/matchers/Debug')
 #sys.path.insert(0,'./cpp/featextract/Debug')
+""" if using camke to compile, please add './cpp/lib' to the path for importing library"""
 sys.path.insert(0,'./cpp/lib')
 
 import librectification as rect
