@@ -33,7 +33,7 @@ To run CBMV you need the following python packages:
 
 - numpy
 - scipy
-- sklearn
+- sklearn (version 0.17.1)
 - cPickle 
 
 Much of CBMV code is written as C++ libraries and interface with python via boost python. To compile the C++ libraries you will need the following:
