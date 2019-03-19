@@ -22,7 +22,7 @@ the code from [Continuous 3D Label Stereo Matching using Local Expansion Moves](
 
 [Training Data](https://drive.google.com/file/d/1RKIhAT5mc9kyWFg9Trg0Ze4qZMzUnbPU/view?usp=sharing)
 
-[CBMV model](https://drive.google.com/file/d/1mjz-Rttdf99BZxne5EFziY5HwB10QPPF/view?usp=sharing): the trained random forest model, with version 0.17.0 sklearn.
+[CBMV model](https://drive.google.com/file/d/1mjz-Rttdf99BZxne5EFziY5HwB10QPPF/view?usp=sharing): the trained random forest model, with version 0.17.1 sklearn.
 
 
 # Run CBMV
